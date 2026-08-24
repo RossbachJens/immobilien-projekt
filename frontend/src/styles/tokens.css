@@ -1,0 +1,26 @@
+/**
+ * Design-Tokens, übernommen aus den vorhandenen /style.css-Werten
+ * (Loruki-Template). Bewusst nur die Werte, nicht die alten Utility-
+ * Klassen (.grid-3, .showcase, ...) – die passen fachlich nicht zur
+ * WEG-Verwaltung. Neue Komponenten greifen auf diese Variablen zu,
+ * damit die Farbwelt konsistent bleibt.
+ */
+:root {
+  --color-primary: #047aed;
+  --color-secondary: #1c3fa8;
+  --color-dark: #002240;
+  --color-light: #f4f4f4;
+  --color-success: #5cb85c;
+  --color-error: #d9534f;
+  --color-text: #333333;
+  --color-white: #ffffff;
+
+  --font-family-base: "Lato", sans-serif;
+
+  --radius-card: 10px;
+  --shadow-card: 0 3px 10px rgba(0, 0, 0, 0.2);
+
+  --space-1: 1rem;
+  --space-2: 1.5rem;
+  --space-3: 2rem;
+}
