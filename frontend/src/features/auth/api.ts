@@ -5,11 +5,26 @@ export interface CurrentUser {
   name: string;
   email: string;
   must_change_password: boolean;
+  is_admin: boolean;
 }
 
 export interface LoginPayload {
   identifier: string;
   password: string;
+}
+
+export interface ForgotPasswordPayload {
+  identifier: string;
+}
+
+export interface ForgotPasswordResult {
+  detail: string;
+  dev_reset_token: string | null;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  new_password: string;
 }
 
 export async function login(payload: LoginPayload): Promise<CurrentUser> {
@@ -24,4 +39,15 @@ export async function logout(): Promise<void> {
 export async function fetchCurrentUser(): Promise<CurrentUser> {
   const { data } = await apiClient.get<CurrentUser>("/auth/me");
   return data;
+}
+
+export async function forgotPassword(
+  payload: ForgotPasswordPayload,
+): Promise<ForgotPasswordResult> {
+  const { data } = await apiClient.post<ForgotPasswordResult>("/auth/forgot-password", payload);
+  return data;
+}
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<void> {
+  await apiClient.post("/auth/reset-password", payload);
 }

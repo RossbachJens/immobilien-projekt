@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Card } from "../../components/Card";
 import { useLogin } from "./useAuth";
@@ -51,6 +51,9 @@ export function LoginPage() {
             {loginMutation.isPending ? "Anmeldung läuft…" : "Anmelden"}
           </button>
         </form>
+        <p className="login-page__forgot">
+          <Link to="/forgot-password">Passwort vergessen?</Link>
+        </p>
       </Card>
     </div>
   );

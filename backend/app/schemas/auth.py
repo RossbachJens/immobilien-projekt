@@ -15,6 +15,7 @@ class UserOut(BaseModel):
     name: str
     email: str
     must_change_password: bool
+    is_admin: bool
 
 
 class ForgotPasswordRequest(BaseModel):

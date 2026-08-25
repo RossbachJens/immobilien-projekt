@@ -16,6 +16,7 @@ export function Navbar() {
         {user && (
           <nav className="navbar__links">
             <Link to="/properties">Liegenschaften</Link>
+            {user.is_admin && <Link to="/users">Benutzer</Link>}
           </nav>
         )}
         {user && (

@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { fetchCurrentUser, login, logout, type CurrentUser } from "./api";
+import {
+  fetchCurrentUser,
+  forgotPassword,
+  login,
+  logout,
+  resetPassword,
+  type CurrentUser,
+} from "./api";
 
 const CURRENT_USER_KEY = ["auth", "me"];
 
@@ -36,5 +43,17 @@ export function useLogout() {
     onSuccess: () => {
       queryClient.setQueryData(CURRENT_USER_KEY, null);
     },
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: forgotPassword,
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: resetPassword,
   });
 }
