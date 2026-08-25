@@ -8,33 +8,16 @@
 - **Frontend-Sprache:** TypeScript von Anfang an (Vite, TanStack Query, React Router, Zod).
 - **Frontend-Design:** Orientiert sich an den bereits vorhandenen HTML/CSS-Dateien im
   Projekt (`index.html`, `features.html`, `docs.html`, `style.css`, `utilities.css` —
-  ursprünglich das statische "Loruki"-Template). Farbpalette (CSS-Variablen wie
-  `--primary-color`, `--secondary-color`, `--dark-color`, `--light-color`), Typografie
-  (Lato), Utility-Klassen (`.container`, `.card`, `.btn`, `.grid`, Spacing-Klassen) und
-  die generelle Formensprache (abgerundete Karten mit Schatten, Navbar-Look) dienen als
-  Design-Grundlage für die React-Komponenten. Diese Werte werden nicht 1:1 kopiert,
-  sondern als Design-Tokens (z. B. in einer zentralen `theme.css` / CSS-Variablen-Datei)
-  ins React-Frontend überführt, damit die Anwendung konsistent aussieht, ohne die
-  statischen Utility-Klassen direkt weiterzuschleppen.
-- **Frontend-Struktur:** Bewusst **kein Monolith**. Klare Trennung nach Feature-Modulen
-  statt einer einzigen wachsenden `App.tsx`. Grobe Zielstruktur:
-  ```
-  frontend/src/
-  ├── api/              # zentraler HTTP-Client + typisierte API-Funktionen je Domäne
-  ├── components/        # wiederverwendbare, "dumme" UI-Bausteine (Button, Card, Input, …)
-  ├── features/           # ein Ordner je fachlicher Domäne, z. B.:
-  │   ├── auth/            #   Login, Session-Handling
-  │   ├── properties/       #   Objekte/Einheiten
-  │   ├── accounting/        #   Buchhaltung
-  │   └── ...                 #   je Feature: components/, hooks/, api.ts, types.ts
-  ├── layouts/            # Seitenrahmen (Navbar, Footer, geschützte Layouts)
-  ├── routes/             # Routing-Konfiguration (React Router)
-  ├── styles/             # zentrale Design-Tokens, abgeleitet aus style.css/utilities.css
-  └── lib/                # generische Helfer (Formatierung, Validierung, …)
-  ```
-  Jedes Feature bleibt für sich testbar und austauschbar; geteilte UI-Bausteine wandern
-  erst dann nach `components/`, wenn sie tatsächlich von mehreren Features genutzt werden
-  (kein verfrühtes Abstrahieren).
+  ursprünglich das statische "Loruki"-Template). Farbpalette, Typografie (Lato) und
+  Formensprache (abgerundete Karten mit Schatten, Navbar-Look) werden als Design-Tokens
+  (`src/styles/tokens.css`) ins React-Frontend überführt.
+- **Frontend-Struktur:** Bewusst **kein Monolith** — Feature-Module (`features/<domäne>/`)
+  statt einer wachsenden `App.tsx`. Details siehe `frontend/src/` (Phase 0 bereits umgesetzt:
+  `api/`, `components/`, `features/`, `layouts/`, `routes/`, `styles/`).
+- **Rollenmodell:** Kein separates globales Rollen-Enum. Rolle ergibt sich aus dem
+  Datenmodell: `users.is_admin` → Admin, `users.owner_id` gesetzt → Eigentümer,
+  `users.tenant_id` gesetzt → Mieter, sonst Verwalter/Buchhalter (granular über
+  `user_properties` je Objekt).
 
 ## Architektur
 ```
@@ -42,46 +25,49 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 ```
 
 ## Arbeitsweise ab jetzt (lernorientiert)
-Für alle kommenden Schritte gilt zusätzlich:
-- Änderungen werden nicht nur ausgeführt, sondern **nachvollziehbar erklärt**: was wird
-  geändert, warum, und welche Alternativen es gäbe.
-- Code-Diffs/neue Dateien werden Schritt für Schritt gezeigt statt als großer Sprung,
-  damit der Aufbau (z. B. Auth-Flow, RLS-Policy, React-Query-Hook) mitverfolgt werden kann.
-- Bei neuen Konzepten (z. B. Row-Level-Security, JWT-Handling, TanStack Query) gibt es
-  jeweils eine kurze Einordnung, bevor der Code kommt.
-- Rückfragen zum "Warum" sind ausdrücklich erwünscht und werden vor dem nächsten Schritt
-  beantwortet.
+- Änderungen werden erklärt (was/warum/Alternativen), bevor der Code kommt.
+- Code wird schrittweise gezeigt, nicht als großer Sprung.
+- Neue Konzepte (RLS, JWT, TanStack Query, ...) werden kurz eingeordnet.
+- Rückfragen zum "Warum" werden vor dem nächsten Schritt beantwortet.
 
 ## Phasen
 
 | # | Phase | Inhalt | Abhängig von |
 |---|-------|--------|---------------|
-| 0 | Setup | Backend-/Frontend-Grundgerüst, Docker Compose, CI-Basis | — |
-| 1 | Auth & Access Control | Login (E-Mail + Google SSO), JWT, RLS-Policies, `access_log`-Middleware | 0 |
+| 0 | Setup | Backend-/Frontend-Grundgerüst, Docker Compose, modulare Frontend-Struktur, CI-Basis | — |
+| 1 | Auth & Access Control | Login (E-Mail + Google SSO) für Admin/Verwalter/Eigentümer/Mieter, JWT via httpOnly-Cookie, RLS-Policies, `access_log`-Middleware | 0 |
 | 2 | Stammdaten | CRUD für properties/units/owners/tenants, Soft-Delete | 1 |
 | 3 | Buchhaltung | Journal/Entry-Lines, Soll=Haben-Trigger (`02_triggers.sql`), Storno-Flow | 2 |
-| 4 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung, PDF-Export je Einheit | 3 |
-| 5 | Mietsollstellung & SEPA | `03_procedures.sql`, Pain.008-XML-Export | 3 |
-| 6 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups, Key-Rotation, E2E-Tests | laufend |
+| 4 | Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung | Wirtschaftspläne je Objekt/Jahr (`budget_plans`, `budget_positions`), Verteilung je Einheit nach MEA/Umlageschlüssel (`unit_budget_shares`), Sonderumlagen (`special_assessments`, `unit_special_assessment_shares`), Beschluss-Sammlung § 24 WEG (`resolution_collection`, dauerhaft aufbewahrt, kein regulärer Soft-Delete-Lifecycle) | 2, 3 |
+| 5 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung (`unit_allocation_keys`), PDF-Export je Einheit (siehe Beispiel „Einzelabrechnung 2024 Wohnung 4") | 3, 4 |
+| 6 | Mietsollstellung & SEPA | `03_procedures.sql`, Pain.008-XML-Export | 3 |
+| 7 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups, Key-Rotation, E2E-Tests | laufend |
 
 ## Meilensteine je Phase
 - **Phase 0:** `docker-compose up` startet DB + FastAPI `/health` + React-Grundgerüst mit
-  modularer Ordnerstruktur (siehe oben) und übernommenem Design (Farben/Typo aus
-  `style.css`/`utilities.css`).
-- **Phase 1:** Drei Test-User (Admin/Owner/Tenant) erhalten nachweislich unterschiedliche
-  Ergebnismengen auf `/properties` — verifiziert durch einen negativen RLS-Testfall.
-- **Phase 2:** Admin legt Objekt + Einheiten an, ordnet Eigentümer zu — vollständig im Frontend.
+  modularer Ordnerstruktur und übernommenem Design. ✅ erledigt
+- **Phase 1:** Vier Test-User (Admin/Verwalter/Eigentümer/Mieter) können sich einloggen
+  und erhalten nachweislich unterschiedliche Ergebnismengen auf `/properties` —
+  verifiziert durch einen negativen RLS-Testfall.
+- **Phase 2:** Admin/Verwalter legt Objekt + Einheiten an, ordnet Eigentümer zu —
+  vollständig im Frontend.
 - **Phase 3:** Buchung mit Soll≠Haben wird serverseitig zuverlässig abgelehnt (Testfall).
-- **Phase 4:** Vollständige Betriebskostenabrechnung für ein Testobjekt als PDF.
-- **Phase 5:** Gültige Pain.008-Datei für einen Lastschriftlauf.
-- **Phase 6:** Vor Produktivbetrieb abgeschlossen.
+- **Phase 4:** Verwalter legt für ein Objekt einen Wirtschaftsplan mit Positionen an; das
+  System verteilt die Beträge automatisch je Einheit nach Umlageschlüssel
+  (`unit_budget_shares`). Eine Sonderumlage kann einem Beschluss aus der Beschluss-Sammlung
+  zugeordnet und ebenfalls je Einheit verteilt werden.
+- **Phase 5:** Vollständige Betriebskostenabrechnung für ein Testobjekt als PDF (Format
+  orientiert an der Beispiel-Jahresabrechnung im Projekt).
+- **Phase 6:** Gültige Pain.008-Datei für einen Lastschriftlauf.
+- **Phase 7:** Vor Produktivbetrieb abgeschlossen.
 
 ## Status
 - [x] Datenbankschema (`01_schema.sql`) inkl. DSGVO-Maßnahmen
-- [ ] Phase 0 — Setup *(in Arbeit)*
-- [ ] Phase 1 — Auth & Access Control
+- [x] Phase 0 — Setup
+- [ ] Phase 1 — Auth & Access Control *(in Arbeit)*
 - [ ] Phase 2 — Stammdaten
 - [ ] Phase 3 — Buchhaltung
-- [ ] Phase 4 — Nebenkostenabrechnung
-- [ ] Phase 5 — Mietsollstellung & SEPA
-- [ ] Phase 6 — Härtung & Betrieb
+- [ ] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung
+- [ ] Phase 5 — Nebenkostenabrechnung
+- [ ] Phase 6 — Mietsollstellung & SEPA
+- [ ] Phase 7 — Härtung & Betrieb

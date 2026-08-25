@@ -93,6 +93,10 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     google_sub_id: Mapped[str | None] = mapped_column(String(255))
     must_change_password: Mapped[bool]
+    # Phase 1: globale Admin-Rolle. Eigentümer/Mieter ergeben sich aus
+    # owner_id/tenant_id, Verwalter granular aus user_properties -
+    # siehe app/core/roles.py::resolve_role.
+    is_admin: Mapped[bool] = mapped_column(default=False)
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
     tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.tenant_id"))
     created_at: Mapped[datetime]

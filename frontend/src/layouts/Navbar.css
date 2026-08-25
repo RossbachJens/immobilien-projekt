@@ -18,3 +18,19 @@
   font-size: 1.5rem;
   font-weight: 700;
 }
+
+.navbar__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.navbar__logout {
+  background: transparent;
+  border: 1px solid var(--color-white);
+  color: var(--color-white);
+  border-radius: 4px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}

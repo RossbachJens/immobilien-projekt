@@ -43,7 +43,31 @@ INSERT INTO unit_allocation_keys (property_id, unit_id, key_type, billing_year, 
 (1, 1, 'Heizkosten_Verbrauch', 2026, 3500.00, 10000.00),
 (1, 2, 'Heizkosten_Verbrauch', 2026, 6500.00, 10000.00);
 
--- 8. Generischer Admin für Erstanmeldung (Login: admin@hausverwaltung-plattform.de / StartPasswort123!)
-INSERT INTO users (email, password_hash, must_change_password) 
-VALUES ('admin@hausverwaltung-plattform.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE);
-INSERT INTO user_roles (user_id, role_id) VALUES (currval('users_user_id_seq'), 1);
+-- 8. Test-User für alle vier Rollen (Login-Passwort jeweils: StartPasswort123!)
+-- Hinweis: Das ursprüngliche "INSERT INTO user_roles (...)" wurde entfernt -
+-- diese Tabelle existiert im Schema gar nicht (nur user_properties mit
+-- property_role je Objekt) und hätte den Container-Start mit einem SQL-Fehler
+-- abgebrochen. Rollen werden stattdessen wie in 01_schema.sql/is_admin
+-- beschrieben aus den vorhandenen Spalten abgeleitet.
+-- WICHTIG: In einer echten Umgebung braucht jeder User einen eigenen,
+-- sicher generierten Passwort-Hash statt desselben Demo-Hashes -
+-- must_change_password=TRUE erzwingt hier zumindest die Änderung beim
+-- ersten Login.
+
+-- Admin: globaler Zugriff über is_admin, keine Objektzuordnung nötig
+INSERT INTO users (email, password_hash, must_change_password, is_admin) 
+VALUES ('admin@hausverwaltung-plattform.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE, TRUE);
+
+-- Verwalter: Zugriff auf "WEG Sonnenblick" granular über user_properties
+INSERT INTO users (email, password_hash, must_change_password)
+VALUES ('verwalter@hausverwaltung-plattform.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE);
+INSERT INTO user_properties (user_id, property_id, role)
+VALUES (currval('users_user_id_seq'), 1, 'Verwalter');
+
+-- Eigentümer-Login, verknüpft mit dem oben angelegten owners-Datensatz (Müller)
+INSERT INTO users (email, password_hash, must_change_password, owner_id)
+VALUES ('mueller@example.com', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE, 1);
+
+-- Mieter-Login, verknüpft mit dem oben angelegten tenants-Datensatz (Becker)
+INSERT INTO users (email, password_hash, must_change_password, tenant_id)
+VALUES ('becker@mieter.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE, 1);

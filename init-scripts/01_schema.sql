@@ -7,6 +7,10 @@
 --   - Fehlende Tabellen ergänzt: accounts, journal_entries, leases,
 --     user_properties, unit_owner_history, access_log, gdpr_deletion_log
 --   - DSGVO-Maßnahmen umgesetzt (siehe Abschnitt "DSGVO" unten)
+--   - Phase 1: users.is_admin ergänzt (globale Admin-Rolle, siehe Router
+--     app/routers/auth.py). Bewusst hier im Basisschema statt als Alembic-
+--     Migration, da die Baseline (`alembic stamp head`) noch nicht gesetzt
+--     wurde und dieses Skript vor jedem Alembic-Lauf ausgeführt wird.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -106,6 +110,7 @@ CREATE TABLE users (
     password_hash            VARCHAR(255),
     google_sub_id            VARCHAR(255),
     must_change_password    BOOLEAN NOT NULL DEFAULT FALSE,
+    is_admin                BOOLEAN NOT NULL DEFAULT FALSE, -- Phase 1: globale Admin-Rolle
     owner_id                 INT REFERENCES owners(owner_id),
     tenant_id                INT REFERENCES tenants(tenant_id),
     created_at               TIMESTAMP NOT NULL DEFAULT now(),
