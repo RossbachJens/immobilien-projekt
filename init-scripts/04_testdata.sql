@@ -56,18 +56,18 @@ INSERT INTO unit_allocation_keys (property_id, unit_id, key_type, billing_year, 
 
 -- Admin: globaler Zugriff über is_admin, keine Objektzuordnung nötig
 INSERT INTO users (email, password_hash, must_change_password, is_admin) 
-VALUES ('admin@hausverwaltung-plattform.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE, TRUE);
+VALUES ('admin@hausverwaltung-plattform.de', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE, TRUE);
 
 -- Verwalter: Zugriff auf "WEG Sonnenblick" granular über user_properties
 INSERT INTO users (email, password_hash, must_change_password)
-VALUES ('verwalter@hausverwaltung-plattform.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE);
+VALUES ('verwalter@hausverwaltung-plattform.de', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE);
 INSERT INTO user_properties (user_id, property_id, role)
 VALUES (currval('users_user_id_seq'), 1, 'Verwalter');
 
 -- Eigentümer-Login, verknüpft mit dem oben angelegten owners-Datensatz (Müller)
 INSERT INTO users (email, password_hash, must_change_password, owner_id)
-VALUES ('mueller@example.com', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE, 1);
+VALUES ('mueller@example.com', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE, 1);
 
 -- Mieter-Login, verknüpft mit dem oben angelegten tenants-Datensatz (Becker)
 INSERT INTO users (email, password_hash, must_change_password, tenant_id)
-VALUES ('becker@mieter.de', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36Yg/Z9uTjZ3qD8Xg.6QBy2', TRUE, 1);
+VALUES ('becker@mieter.de', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE, 1);

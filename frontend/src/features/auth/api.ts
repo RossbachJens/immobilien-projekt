@@ -1,11 +1,8 @@
 import { apiClient } from "../../api/client";
 
-export type UserRole = "admin" | "verwalter" | "eigentuemer" | "mieter";
-
 export interface CurrentUser {
   user_id: number;
   email: string;
-  role: UserRole;
   must_change_password: boolean;
 }
 

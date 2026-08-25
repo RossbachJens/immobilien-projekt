@@ -14,6 +14,11 @@ export function Navbar() {
           Immobilien- &amp; WEG-Verwaltung
         </Link>
         {user && (
+          <nav className="navbar__links">
+            <Link to="/properties">Liegenschaften</Link>
+          </nav>
+        )}
+        {user && (
           <div className="navbar__user">
             <span>{user.email}</span>
             <button

@@ -1,7 +1,8 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { LoginPage } from "../features/auth/LoginPage";
 import { HealthStatus } from "../features/health/HealthStatus";
+import { PropertiesPage } from "../features/properties/PropertiesPage";
 import { MainLayout } from "../layouts/MainLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 
@@ -21,8 +22,17 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        {/* Ab Phase 2: /properties, /units, ... - jeweils in ProtectedRoute */}
+        <Route
+          path="/properties"
+          element={
+            <ProtectedRoute>
+              <PropertiesPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
