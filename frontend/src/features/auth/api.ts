@@ -2,12 +2,13 @@ import { apiClient } from "../../api/client";
 
 export interface CurrentUser {
   user_id: number;
+  name: string;
   email: string;
   must_change_password: boolean;
 }
 
 export interface LoginPayload {
-  email: string;
+  identifier: string;
   password: string;
 }
 

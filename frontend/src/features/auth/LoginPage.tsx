@@ -6,7 +6,7 @@ import { useLogin } from "./useAuth";
 import "./LoginPage.css";
 
 export function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const loginMutation = useLogin();
@@ -14,7 +14,7 @@ export function LoginPage() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     loginMutation.mutate(
-      { email, password },
+      { identifier, password },
       { onSuccess: () => navigate("/") },
     );
   }
@@ -25,11 +25,11 @@ export function LoginPage() {
         <h1>Anmelden</h1>
         <form onSubmit={handleSubmit} className="login-form">
           <label>
-            E-Mail
+            E-Mail oder Name
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               autoComplete="username"
               required
             />

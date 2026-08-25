@@ -1,7 +1,7 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, Text
+from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, Text,func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -39,7 +39,7 @@ class JournalEntry(Base):
     document_reference: Mapped[str | None]
     description: Mapped[str] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.user_id"))
-    created_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     locked_at: Mapped[datetime | None]
     reversed_entry_id: Mapped[int | None] = mapped_column(
         ForeignKey("journal_entries.entry_id")
@@ -66,4 +66,4 @@ class EntryLine(Base):
     direction: Mapped[EntryDirection] = mapped_column(
         Enum(EntryDirection, name="entry_direction")
     )
-    created_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

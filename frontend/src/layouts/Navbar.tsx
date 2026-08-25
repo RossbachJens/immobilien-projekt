@@ -20,7 +20,7 @@ export function Navbar() {
         )}
         {user && (
           <div className="navbar__user">
-            <span>{user.email}</span>
+            <span>{user.name}</span>
             <button
               type="button"
               className="navbar__logout"

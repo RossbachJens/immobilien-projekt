@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -32,3 +34,19 @@ def decode_access_token(token: str) -> str | None:
     except JWTError:
         return None
     return payload.get("sub")
+
+
+def generate_reset_token() -> str:
+    """Hochentropischer Zufallstoken fuer den Passwort-Reset-Link (kein JWT -
+    absichtlich nicht selbstbeschreibend, nur ein Bearer-Geheimnis, das
+    gegen den gespeicherten Hash geprueft wird)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_reset_token(token: str) -> str:
+    """SHA-256 reicht hier bewusst statt bcrypt: der Token ist bereits
+    hochentropisch, es geht nur darum, dass ein DB-Leak keine gueltigen
+    Reset-Links preisgibt - nicht um Schutz vor Bruteforce eines schwachen,
+    selbst gewaehlten Geheimnisses wie bei Passwoertern. Umgeht ausserdem
+    bcrypts 72-Byte-Limit."""
+    return hashlib.sha256(token.encode()).hexdigest()

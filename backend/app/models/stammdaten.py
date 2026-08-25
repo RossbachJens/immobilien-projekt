@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, LargeBinary, Numeric, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, LargeBinary, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -15,8 +15,8 @@ class Property(Base):
     total_square_meters: Mapped[float | None] = mapped_column(Numeric(10, 2))
     construction_year: Mapped[int | None]
     description: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime]
-    updated_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
 
     units: Mapped[list["Unit"]] = relationship(back_populates="property")
@@ -56,8 +56,8 @@ class Owner(Base):
     iban_last4: Mapped[str | None] = mapped_column(String(4))
     sepa_mandate_reference: Mapped[str | None] = mapped_column(String(35))
     sepa_granted_at: Mapped[date | None]
-    created_at: Mapped[datetime]
-    updated_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
     anonymized_at: Mapped[datetime | None]
 
@@ -68,6 +68,7 @@ class Tenant(Base):
     tenant_id: Mapped[int] = mapped_column(primary_key=True)
     first_name: Mapped[str] = mapped_column(String(50))
     last_name: Mapped[str] = mapped_column(String(50))
+    email: Mapped[str | None] = mapped_column(String(100))
     street_and_number: Mapped[str] = mapped_column(String(150))
     postal_code: Mapped[str | None] = mapped_column(String(10))
     city: Mapped[str | None] = mapped_column(String(100))
@@ -76,8 +77,8 @@ class Tenant(Base):
     bic_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
     iban_last4: Mapped[str | None] = mapped_column(String(4))
     sepa_mandate_reference: Mapped[str | None] = mapped_column(String(35))
-    created_at: Mapped[datetime]
-    updated_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
     anonymized_at: Mapped[datetime | None]
 
@@ -89,6 +90,7 @@ class User(Base):
     )
 
     user_id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(100))
     password_hash: Mapped[str | None] = mapped_column(String(255))
     google_sub_id: Mapped[str | None] = mapped_column(String(255))
@@ -99,6 +101,6 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(default=False)
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
     tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.tenant_id"))
-    created_at: Mapped[datetime]
-    last_login_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]

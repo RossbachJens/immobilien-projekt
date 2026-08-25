@@ -1,73 +1,60 @@
--- 1. Liegenschaft mit erweiterten Asset-Management Feldern
-INSERT INTO properties (name, address, total_square_meters, construction_year, description) 
-VALUES ('WEG Sonnenblick', 'Sonnenallee 45, 10243 Berlin', 1250.50, 1996, 'Wohnanlage bestehend aus 3 Wohngebäuden. Teilsaniert 2018.');
+-- 1. Liegenschaft
+INSERT INTO properties (name, address, total_square_meters, construction_year, description)
+VALUES ('WEG Sonnenblick', 'Sonnenallee 45, 10243 Berlin', 1250.50, 1996,
+        'Wohnanlage bestehend aus 3 Wohngebäuden. Teilsaniert 2018.');
 
 -- 2. SKR 04 Finanzkonten
-INSERT INTO accounts (account_id, name, type) VALUES
-(1800, 'Deutsche Bank - Girokonto (Laufender Betrieb)', 'Asset'),
-(1810, 'Aareal Bank - Tagesgeld (Instandhaltungsrücklage)', 'Asset'),
-(1820, 'DKB - Kündigungsgeldkonto (Anlage Rücklage)', 'Asset'),
-(1830, 'MKB - Sparbrief (Festgeldanlage Rücklage)', 'Asset'),
-(1200, 'Forderungen gegen Mieter (Sondereigentum)', 'Asset'),
-(1220, 'Forderungen gegen Eigentümer (Hausgelder)', 'Asset'),
-(4400, 'Erlöse aus Vermietung (Nettokaltmiete)', 'Revenue'),
-(4410, 'Umlagenerlöse (Nebenkostenvorauszahlung)', 'Revenue'),
-(5200, 'Kosten - Heizkosten Aufwand (umlagefähig)', 'Expense');
+-- Hinweis: 03_procedures.sql verwendet SKR04-Nummern (1200, 4400, 4410, ...)
+-- direkt als account_id, obwohl account_id eigentlich ein Surrogatschlüssel
+-- (IDENTITY) ist und account_number die eigentliche SKR04-Nummer wäre. Bis
+-- das sauber getrennt ist (03_procedures.sql müsste über account_number
+-- nachschlagen), erzwingen wir hier die gewünschten IDs explizit.
+INSERT INTO accounts (account_id, account_number, account_name, account_class, type, is_active)
+OVERRIDING SYSTEM VALUE
+VALUES
+    (1800, '1800', 'Deutsche Bank - Girokonto (Laufender Betrieb)', '1', 'AKTIV', TRUE),
+    (1810, '1810', 'Aareal Bank - Tagesgeld (Instandhaltungsrücklage)', '1', 'AKTIV', TRUE),
+    (1820, '1820', 'DKB - Kündigungsgeldkonto (Anlage Rücklage)', '1', 'AKTIV', TRUE),
+    (1830, '1830', 'MKB - Sparbrief (Festgeldanlage Rücklage)', '1', 'AKTIV', TRUE),
+    (1200, '1200', 'Forderungen gegen Mieter (Sondereigentum)', '1', 'AKTIV', TRUE),
+    (1220, '1220', 'Forderungen gegen Eigentümer (Hausgelder)', '1', 'AKTIV', TRUE),
+    (4400, '4400', 'Erlöse aus Vermietung (Nettokaltmiete)', '4', 'ERTRAG', TRUE),
+    (4410, '4410', 'Umlagenerlöse (Nebenkostenvorauszahlung)', '4', 'ERTRAG', TRUE),
+    (5200, '5200', 'Kosten - Heizkosten Aufwand (umlagefähig)', '5', 'AUFWAND', TRUE);
 
--- 3. Getrennte Bankkonten
-INSERT INTO bank_accounts (property_id, account_id, account_holder, iban, bic, bank_name, purpose) VALUES
-(1, 1800, 'WEG Sonnenblick', 'DE89370400440001111111', 'DBANKDEMMXXX', 'Deutsche Bank', 'Girokonto (Laufend)'),
-(1, 1810, 'WEG Sonnenblick - Rücklage', 'DE22370400440002222222', 'AAREALDEFFXXX', 'Aareal Bank', 'Tagesgeld (Rücklage)'),
-(1, 1820, 'WEG Sonnenblick - Rücklage', 'DE45370400440003333333', 'DKBBDEDDXXX', 'DKB', 'Kündigungsgeld (Rücklage)'),
-(1, 1830, 'WEG Sonnenblick - Rücklage', 'DE66370400440004444444', 'MKBBDEDDXXX', 'Mittelbrandenburgische Sparkasse', 'Sparbrief (Rücklage)');
+-- Sequence weitersetzen, sonst kollidiert der nächste automatische Insert
+-- (ohne OVERRIDING SYSTEM VALUE) mit den oben manuell vergebenen IDs.
+SELECT setval(pg_get_serial_sequence('accounts', 'account_id'), (SELECT MAX(account_id) FROM accounts));
 
--- 4. Einheiten
+-- 3. Einheiten
 INSERT INTO units (property_id, unit_number, floor, square_meters, unit_type) VALUES
 (1, 'WE 01', 'EG links', 65.00, 'Wohnung'),
 (1, 'WE 02', '1. OG rechts', 85.00, 'Wohnung'),
 (1, 'WE 03', '2. OG links', 50.00, 'Wohnung');
 
--- 5. Eigentümer & SEPA
-INSERT INTO owners (first_name, last_name, email, street_and_number, postal_code, city, bank_name, iban, bic, sepa_mandate_reference, sepa_granted_at) 
-VALUES ('Maximilian', 'Müller', 'mueller@example.com', 'Hauptstraße 12a', '10115', 'Berlin', 'Berliner Sparkasse', 'DE45100500000012345678', 'PBNKDEBBXXX', 'MANDAT-OWN-MUELLER-001', '2024-01-15');
+-- 4. Eigentümer
+-- iban_encrypted/bic_encrypted bleiben NULL: die Verschlüsselung braucht den
+-- App-Key (PII_ENCRYPTION_KEY), den dieses SQL-Skript nicht kennt.
+INSERT INTO owners (first_name, last_name, email, street_and_number, postal_code, city,
+                     bank_name, iban_last4, sepa_mandate_reference, sepa_granted_at)
+VALUES ('Maximilian', 'Müller', 'mueller@example.com', 'Hauptstraße 12a', '10115', 'Berlin',
+        'Berliner Sparkasse', '5678', 'MANDAT-OWN-MUELLER-001', '2024-01-15');
 INSERT INTO unit_owner_history (unit_id, owner_id, valid_from, valid_to) VALUES (1, 1, '2024-01-01', NULL);
 
--- 6. Mieter & SEPA
-INSERT INTO tenants (first_name, last_name, email, street_and_number, postal_code, city, bank_name, iban, bic, sepa_mandate_reference, sepa_granted_at) 
-VALUES ('Andreas', 'Becker', 'becker@mieter.de', 'Sonnenallee 45', '10243', 'Berlin', 'Commerzbank', 'DE12200800000098765432', 'COBA DEFFXXX', 'MANDAT-TEN-BECKER-001', '2024-05-20');
-INSERT INTO leases (unit_id, start_date, end_date, net_rent, service_charges) VALUES (1, '2024-06-01', NULL, 750.00, 180.00);
-INSERT INTO lease_tenants (lease_id, tenant_id, is_main_tenant) VALUES (1, 1, TRUE);
+-- 5. Mieter (setzt die neue email-Spalte voraus, siehe oben)
+INSERT INTO tenants (first_name, last_name, email, street_and_number, postal_code, city,
+                      bank_name, iban_last4, sepa_mandate_reference)
+VALUES ('Andreas', 'Becker', 'becker@mieter.de', 'Sonnenallee 45', '10243', 'Berlin',
+        'Commerzbank', '5432', 'MANDAT-TEN-BECKER-001');
 
--- 7. Umlageschlüssel
+-- tenant_id sitzt direkt auf leases - kein lease_tenants (existiert im Schema nicht).
+INSERT INTO leases (unit_id, tenant_id, start_date, end_date, cold_rent, additional_costs_prepayment)
+VALUES (1, 1, '2024-06-01', NULL, 750.00, 180.00);
+
+-- 6. Umlageschlüssel
 INSERT INTO unit_allocation_keys (property_id, unit_id, key_type, billing_year, numerator_value, denominator_value) VALUES
 (1, 1, 'Heizkosten_Verbrauch', 2026, 3500.00, 10000.00),
 (1, 2, 'Heizkosten_Verbrauch', 2026, 6500.00, 10000.00);
 
--- 8. Test-User für alle vier Rollen (Login-Passwort jeweils: StartPasswort123!)
--- Hinweis: Das ursprüngliche "INSERT INTO user_roles (...)" wurde entfernt -
--- diese Tabelle existiert im Schema gar nicht (nur user_properties mit
--- property_role je Objekt) und hätte den Container-Start mit einem SQL-Fehler
--- abgebrochen. Rollen werden stattdessen wie in 01_schema.sql/is_admin
--- beschrieben aus den vorhandenen Spalten abgeleitet.
--- WICHTIG: In einer echten Umgebung braucht jeder User einen eigenen,
--- sicher generierten Passwort-Hash statt desselben Demo-Hashes -
--- must_change_password=TRUE erzwingt hier zumindest die Änderung beim
--- ersten Login.
-
--- Admin: globaler Zugriff über is_admin, keine Objektzuordnung nötig
-INSERT INTO users (email, password_hash, must_change_password, is_admin) 
-VALUES ('admin@hausverwaltung-plattform.de', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE, TRUE);
-
--- Verwalter: Zugriff auf "WEG Sonnenblick" granular über user_properties
-INSERT INTO users (email, password_hash, must_change_password)
-VALUES ('verwalter@hausverwaltung-plattform.de', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE);
-INSERT INTO user_properties (user_id, property_id, role)
-VALUES (currval('users_user_id_seq'), 1, 'Verwalter');
-
--- Eigentümer-Login, verknüpft mit dem oben angelegten owners-Datensatz (Müller)
-INSERT INTO users (email, password_hash, must_change_password, owner_id)
-VALUES ('mueller@example.com', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE, 1);
-
--- Mieter-Login, verknüpft mit dem oben angelegten tenants-Datensatz (Becker)
-INSERT INTO users (email, password_hash, must_change_password, tenant_id)
-VALUES ('becker@mieter.de', '$2b$12$zYE/C7vGeqrRQ.F0epJNlOZd7Jtm.ycQbhT/SB2iaN3M5oTDXOQee', TRUE, 1);
+-- Bewusst keine User mehr hier: Der erste Admin wird per CLI angelegt
+-- (app/cli.py, siehe unten), nicht mehr durch dieses Seed-Skript.

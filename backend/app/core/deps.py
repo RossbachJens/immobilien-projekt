@@ -24,3 +24,11 @@ def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Benutzer nicht gefunden")
 
     return user
+
+
+def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Wie get_current_user, verlangt zusaetzlich is_admin=True. Fuer alle
+    Endpoints der globalen Nutzerverwaltung (app/routers/users.py)."""
+    if not current_user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur für Administratoren")
+    return current_user

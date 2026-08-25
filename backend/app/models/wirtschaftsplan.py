@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -23,7 +23,7 @@ class ResolutionCollection(Base):
     description: Mapped[str | None] = mapped_column(Text)
     resolution_type: Mapped[str | None]
     proposed_by_owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
-    created_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
 
 
@@ -41,7 +41,7 @@ class BudgetPlan(Base):
     fiscal_year: Mapped[int]
     title: Mapped[str]
     status: Mapped[str] = mapped_column(default="Entwurf")
-    created_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
 
 
@@ -84,7 +84,7 @@ class SpecialAssessment(Base):
     total_required_amount: Mapped[float] = mapped_column(Numeric(12, 2))
     due_date: Mapped[date]
     status: Mapped[str] = mapped_column(default="Geplant")
-    created_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
 
 

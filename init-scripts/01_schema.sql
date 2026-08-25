@@ -89,6 +89,7 @@ CREATE TABLE tenants (
     tenant_id               INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     first_name               VARCHAR(50) NOT NULL,
     last_name                VARCHAR(50) NOT NULL,
+    email                     VARCHAR(100),
     street_and_number        VARCHAR(150) NOT NULL,
     postal_code               VARCHAR(10),
     city                      VARCHAR(100),
@@ -106,6 +107,7 @@ CREATE TABLE tenants (
 -- ----------------------------- users ------------------------------------
 CREATE TABLE users (
     user_id                INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name                    VARCHAR(100) NOT NULL,
     email                   VARCHAR(100) NOT NULL,
     password_hash            VARCHAR(255),
     google_sub_id            VARCHAR(255),
@@ -120,6 +122,24 @@ CREATE TABLE users (
         CHECK (password_hash IS NOT NULL OR google_sub_id IS NOT NULL)
 );
 
+-- ------------------- password_reset_tokens --------------------------------
+-- Fuer den "Passwort vergessen"-Flow (app/routers/auth.py). Es wird nur der
+-- Hash des Tokens gespeichert (SHA-256, siehe app/core/security.py), nicht
+-- der Token selbst - ein DB-Leak gibt so keine gueltigen Reset-Links preis.
+-- E-Mail-Versand ist bewusst noch nicht angebunden (PROJECTPLAN.md, Phase 7)
+-- - der Rohtoken wird uebergangsweise nur im Development-Modus direkt in der
+-- API-Antwort zurueckgegeben (settings.environment).
+CREATE TABLE password_reset_tokens (
+    token_id      INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id        INT NOT NULL REFERENCES users(user_id),
+    token_hash      VARCHAR(64) NOT NULL, -- hex-SHA-256, immer 64 Zeichen
+    expires_at      TIMESTAMP NOT NULL,
+    used_at         TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX idx_password_reset_tokens_hash ON password_reset_tokens(token_hash);
+CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
 -- =====================================================================
 -- 3. ZUORDNUNGEN / MANDANTENTRENNUNG
 -- =====================================================================
@@ -428,6 +448,9 @@ $$ LANGUAGE plpgsql;
 -- (siehe README) — aktiv nur für Datensätze mit deleted_at IS NULL.
 CREATE UNIQUE INDEX idx_users_email_active
     ON users (email) WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX idx_users_name_active
+    ON users (name) WHERE deleted_at IS NULL;
 
 CREATE UNIQUE INDEX idx_users_google_sub_active
     ON users (google_sub_id) WHERE deleted_at IS NULL AND google_sub_id IS NOT NULL;

@@ -1,7 +1,7 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, UniqueConstraint,func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -39,7 +39,7 @@ class UserProperty(Base):
         ForeignKey("properties.property_id"), primary_key=True
     )
     role: Mapped[PropertyRole] = mapped_column(Enum(PropertyRole, name="property_role"))
-    granted_at: Mapped[datetime]
+    granted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class UnitAllocationKey(Base):
