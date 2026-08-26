@@ -64,6 +64,7 @@ class UserUpdateRequest(BaseModel):
     property_assignments: list[PropertyAssignmentIn] | None = None
 
 
+# backend/app/schemas/users.py — UserAdminOut ergänzen
 class UserAdminOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -75,4 +76,5 @@ class UserAdminOut(BaseModel):
     owner_id: int | None
     tenant_id: int | None
     created_at: datetime
+    deleted_at: datetime | None
     property_assignments: list[PropertyAssignmentOut] = Field(default_factory=list)

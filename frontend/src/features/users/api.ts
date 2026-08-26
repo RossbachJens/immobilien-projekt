@@ -17,6 +17,7 @@ export interface AdminUser {
   owner_id: number | null;
   tenant_id: number | null;
   created_at: string;
+  deleted_at: string | null;
   property_assignments: PropertyAssignment[];
 }
 
@@ -56,4 +57,9 @@ export async function updateUser(userId: number, payload: UpdateUserPayload): Pr
 
 export async function deleteUser(userId: number): Promise<void> {
   await apiClient.delete(`/users/${userId}`);
+}
+
+export async function reactivateUser(userId: number): Promise<AdminUser> {
+  const { data } = await apiClient.post<AdminUser>(`/users/${userId}/reactivate`);
+  return data;
 }

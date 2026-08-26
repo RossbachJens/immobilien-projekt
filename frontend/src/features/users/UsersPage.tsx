@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { Card } from "../../components/Card";
 import { UserForm, type UserFormValues } from "./UserForm";
-import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "./useUsers";
+import { useCreateUser, useDeleteUser, useReactivateUser, useUpdateUser, useUsers } from "./useUsers";
 import "./UsersPage.css";
 
 function roleLabel(user: { is_admin: boolean; owner_id: number | null; tenant_id: number | null }): string {
@@ -18,6 +18,7 @@ export function UsersPage() {
   const createUserMutation = useCreateUser();
   const updateUserMutation = useUpdateUser();
   const deleteUserMutation = useDeleteUser();
+  const reactivateUserMutation = useReactivateUser();
 
   const [mode, setMode] = useState<"idle" | "creating" | number>("idle");
   const [formError, setFormError] = useState<string | null>(null);
@@ -77,33 +78,43 @@ export function UsersPage() {
 
         <table className="users-page__table">
           <thead>
-            <tr>
-              <th>Name</th>
-              <th>E-Mail</th>
-              <th>Rolle</th>
-              <th>Liegenschaften</th>
-              <th>Erstlogin ausstehend</th>
-              <th />
-            </tr>
+           <tr>
+  <th>Name</th>
+  <th>E-Mail</th>
+  <th>Rolle</th>
+  <th>Liegenschaften</th>
+  <th>Erstlogin ausstehend</th>
+  <th>Status</th>
+  <th />
+          </tr>
           </thead>
           <tbody>
-            {users?.map((user) => (
-              <tr key={user.user_id}>
-                <td>{user.name}</td>
-                <td>{user.email}</td>
-                <td>{roleLabel(user)}</td>
-                <td>{user.property_assignments.length}</td>
-                <td>{user.must_change_password ? "Ja" : "Nein"}</td>
-                <td className="users-page__actions">
-                  <button type="button" onClick={() => setMode(user.user_id)}>
-                    Bearbeiten
-                  </button>
-                  <button type="button" onClick={() => handleDelete(user.user_id)}>
-                    Löschen
-                  </button>
-                </td>
-              </tr>
-            ))}
+{users?.map((user) => {
+  const isDeleted = user.deleted_at != null;
+  return (
+    <tr key={user.user_id} className={isDeleted ? "users-page__row--deleted" : undefined}>
+      <td>{user.name}</td>
+      <td>{user.email}</td>
+      <td>{roleLabel(user)}</td>
+      <td>{user.property_assignments.length}</td>
+      <td>{isDeleted ? "–" : user.must_change_password ? "Ja" : "Nein"}</td>
+      <td>{isDeleted ? "Gelöscht" : "Aktiv"}</td>
+      <td className="users-page__actions">
+        {isDeleted ? (
+          <button type="button" onClick={() => reactivateUserMutation.mutate(user.user_id)}>
+            Reaktivieren
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => setMode(user.user_id)}>Bearbeiten</button>
+            <button type="button" onClick={() => handleDelete(user.user_id)}>Löschen</button>
+          </>
+        )}
+      </td>
+    </tr>
+  );
+})}
+            
           </tbody>
         </table>
       </Card>

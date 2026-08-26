@@ -40,3 +40,12 @@ export function useDeleteUser() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_KEY }),
   });
 }
+
+// frontend/src/features/users/useUsers.ts — ergänzen
+export function useReactivateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) => reactivateUser(userId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_KEY }),
+  });
+}

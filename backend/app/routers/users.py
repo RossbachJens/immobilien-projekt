@@ -28,10 +28,10 @@ def _to_admin_out(user: User, assignments: list[UserProperty]) -> UserAdminOut:
         owner_id=user.owner_id,
         tenant_id=user.tenant_id,
         created_at=user.created_at,
-        property_assignments=[
-            PropertyAssignmentOut.model_validate(a) for a in assignments
-        ],
+        deleted_at=user.deleted_at,
+        property_assignments=[PropertyAssignmentOut.model_validate(a) for a in assignments],
     )
+
 
 
 def _load_assignments(db: Session, user_id: int) -> list[UserProperty]:
@@ -102,14 +102,14 @@ def list_users(
     db: Session = Depends(get_db),
     _admin: User = Depends(get_current_admin),
 ) -> list[UserAdminOut]:
-    users = list(db.scalars(select(User).where(User.deleted_at.is_(None))))
+    # Bewusst OHNE .where(deleted_at IS NULL) - Admins sollen gelöschte User
+    # weiterhin sehen (z.B. um sie zu reaktivieren).
+    users = list(db.scalars(select(User).order_by(User.deleted_at.is_(None).desc(), User.name)))
     if not users:
         return []
 
     user_ids = [u.user_id for u in users]
-    assignments = list(
-        db.scalars(select(UserProperty).where(UserProperty.user_id.in_(user_ids)))
-    )
+    assignments = list(db.scalars(select(UserProperty).where(UserProperty.user_id.in_(user_ids))))
     by_user: dict[int, list[UserProperty]] = {}
     for a in assignments:
         by_user.setdefault(a.user_id, []).append(a)
@@ -252,3 +252,38 @@ def delete_user(
 
     user.deleted_at = func.now()
     db.commit()
+    
+@router.post("/{user_id}/reactivate", response_model=UserAdminOut)
+def reactivate_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> UserAdminOut:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User nicht gefunden")
+    if user.deleted_at is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "User ist nicht gelöscht")
+
+    # Nach dem Soft-Delete wird E-Mail/Name für Neuanmeldungen wieder frei
+    # (partieller Unique-Index, siehe 01_schema.sql) - könnte inzwischen von
+    # einem anderen aktiven User belegt sein.
+    conflict = db.scalar(
+        select(User).where(
+            or_(User.email == user.email, User.name == user.name),
+            User.deleted_at.is_(None),
+            User.user_id != user_id,
+        )
+    )
+    if conflict is not None:
+        conflict_field = "E-Mail" if conflict.email == user.email else "Name"
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{conflict_field} wird bereits von einem aktiven User verwendet - Reaktivierung nicht möglich.",
+        )
+
+    user.deleted_at = None
+    db.commit()
+    db.refresh(user)
+    assignments = _load_assignments(db, user_id)
+    return _to_admin_out(user, assignments)

@@ -14,12 +14,14 @@ export function Navbar() {
         <Link to="/" className="navbar__logo">
           Immobilien- &amp; WEG-Verwaltung
         </Link>
-        {user && (
-          <nav className="navbar__links">
-            <Link to="/properties">Liegenschaften</Link>
-            {user.is_admin && <Link to="/users">Nutzerverwaltung</Link>}
-          </nav>
-        )}
+  {user && (
+  <nav className="navbar__links">
+    <Link to="/properties">Liegenschaften</Link>
+    <Link to="/owners">Eigentümer</Link>
+    <Link to="/tenants">Mieter</Link>
+    {user.is_admin && <Link to="/users">Nutzerverwaltung</Link>}
+  </nav>
+)}
         {user && (
           <div className="navbar__user">
             <span>{user.name}</span>

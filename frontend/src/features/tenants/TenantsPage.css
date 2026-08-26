@@ -1,17 +1,17 @@
-/* frontend/src/features/users/UsersPage.css */
-.users-page {
+/* frontend/src/features/tenants/TenantsPage.css */
+.tenants-page {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.users-page__header {
+.tenants-page__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.users-page__header button {
+.tenants-page__header button {
   padding: 0.6rem 1rem;
   background-color: var(--color-primary);
   color: var(--color-white);
@@ -20,34 +20,28 @@
   cursor: pointer;
 }
 
-.users-page__table {
+.tenants-page__table {
   width: 100%;
   border-collapse: collapse;
   margin-top: var(--space-1);
 }
 
-.users-page__table th,
-.users-page__table td {
+.tenants-page__table th,
+.tenants-page__table td {
   text-align: left;
   padding: 0.5rem;
   border-bottom: 1px solid #eee;
 }
 
-.users-page__actions {
+.tenants-page__actions {
   display: flex;
   gap: 0.5rem;
 }
 
-.users-page__actions button {
+.tenants-page__actions button {
   padding: 0.3rem 0.6rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: var(--color-white);
   cursor: pointer;
-}
-
-/* frontend/src/features/users/UsersPage.css — ergänzen */
-.users-page__row--deleted {
-  opacity: 0.55;
-  font-style: italic;
 }
