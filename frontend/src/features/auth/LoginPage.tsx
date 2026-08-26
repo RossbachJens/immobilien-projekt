@@ -1,3 +1,4 @@
+// frontend/src/features/auth/LoginPage.tsx — Link ergänzen
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 

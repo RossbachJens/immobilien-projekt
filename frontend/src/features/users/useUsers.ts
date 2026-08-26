@@ -1,22 +1,42 @@
+// frontend/src/features/users/useUsers.ts
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createUser, listUsers, type UserCreatePayload } from "./api";
+import {
+  createUser,
+  deleteUser,
+  listUsers,
+  updateUser,
+  type CreateUserPayload,
+  type UpdateUserPayload,
+} from "./api";
 
 const USERS_KEY = ["users"];
 
 export function useUsers() {
-  return useQuery({
-    queryKey: USERS_KEY,
-    queryFn: listUsers,
-  });
+  return useQuery({ queryKey: USERS_KEY, queryFn: listUsers });
 }
 
 export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UserCreatePayload) => createUser(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: USERS_KEY });
-    },
+    mutationFn: (payload: CreateUserPayload) => createUser(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_KEY }),
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, payload }: { userId: number; payload: UpdateUserPayload }) =>
+      updateUser(userId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_KEY }),
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) => deleteUser(userId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_KEY }),
   });
 }

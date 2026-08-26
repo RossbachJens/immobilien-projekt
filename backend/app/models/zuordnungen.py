@@ -43,16 +43,28 @@ class UserProperty(Base):
 
 
 class UnitAllocationKey(Base):
+    """
+    Gültigkeitszeitraum statt Jahres-Einzelzeile (siehe PROJECTPLAN.md).
+    valid_to_year = None -> aktuell gültig. Der EXCLUDE-Constraint gegen
+    überlappende Zeiträume (excl_unit_allocation_keys_no_overlap) ist im
+    SQLAlchemy-ORM nicht abbildbar - siehe 01_schema.sql.
+    """
+
     __tablename__ = "unit_allocation_keys"
-    __table_args__ = (UniqueConstraint("unit_id", "key_type", "billing_year"),)
+    __table_args__ = (
+        CheckConstraint("denominator_value > 0"),
+        CheckConstraint("numerator_value >= 0"),
+        CheckConstraint("valid_to_year IS NULL OR valid_to_year >= valid_from_year"),
+    )
 
     key_id: Mapped[int] = mapped_column(primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.property_id"))
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.unit_id"))
     key_type: Mapped[str]
-    billing_year: Mapped[int]
     numerator_value: Mapped[float] = mapped_column(Numeric(10, 4))
     denominator_value: Mapped[float] = mapped_column(Numeric(10, 4))
+    valid_from_year: Mapped[int]
+    valid_to_year: Mapped[int | None]
 
 
 class Lease(Base):

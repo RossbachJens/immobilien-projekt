@@ -1,3 +1,4 @@
+// frontend/src/routes/AppRoutes.tsx
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
@@ -13,9 +14,12 @@ import { ProtectedRoute } from "./ProtectedRoute";
 export function AppRoutes() {
   return (
     <Routes>
+      {/* /login, /forgot-password, /reset-password bewusst außerhalb von
+          MainLayout - keine Navbar mit Logout-Button, solange man noch gar
+          nicht eingeloggt ist. */}
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/login" element={<LoginPage />} />
 
       <Route element={<MainLayout />}>
         <Route
@@ -34,12 +38,14 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         />
-         <Route
+        <Route
           path="/users"
           element={
-            <AdminRoute>
-              <UsersPage />
-            </AdminRoute>
+            <ProtectedRoute>
+              <AdminRoute>
+                <UsersPage />
+              </AdminRoute>
+            </ProtectedRoute>
           }
         />
       </Route>

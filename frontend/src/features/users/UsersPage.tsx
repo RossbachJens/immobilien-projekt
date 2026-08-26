@@ -1,87 +1,89 @@
-import { useState, type FormEvent } from "react";
-import { isAxiosError } from "axios";
+// frontend/src/features/users/UsersPage.tsx
+import { useState } from "react";
 
 import { Card } from "../../components/Card";
-import { useProperties } from "../properties/useProperties";
-import type { PropertyAssignment, PropertyRole } from "./api";
-import { useCreateUser, useUsers } from "./useUsers";
+import { UserForm, type UserFormValues } from "./UserForm";
+import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "./useUsers";
 import "./UsersPage.css";
 
-const PROPERTY_ROLES: PropertyRole[] = ["Verwalter", "Buchhalter", "Lesezugriff"];
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (isAxiosError(error) && typeof error.response?.data?.detail === "string") {
-    return error.response.data.detail;
-  }
-  return fallback;
+function roleLabel(user: { is_admin: boolean; owner_id: number | null; tenant_id: number | null }): string {
+  if (user.is_admin) return "Administrator";
+  if (user.owner_id != null) return "Eigentümer";
+  if (user.tenant_id != null) return "Mieter";
+  return "Verwalter";
 }
 
 export function UsersPage() {
-  const { data: users, isLoading: usersLoading } = useUsers();
-  const { data: properties } = useProperties();
+  const { data: users, isLoading } = useUsers();
   const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
+  const deleteUserMutation = useDeleteUser();
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [assignments, setAssignments] = useState<PropertyAssignment[]>([]);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | "">("");
-  const [selectedRole, setSelectedRole] = useState<PropertyRole>("Verwalter");
-  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"idle" | "creating" | number>("idle");
+  const [formError, setFormError] = useState<string | null>(null);
 
-  function handleAddAssignment() {
-    if (selectedPropertyId === "") return;
-    if (assignments.some((a) => a.property_id === selectedPropertyId)) return;
-    setAssignments([...assignments, { property_id: selectedPropertyId, role: selectedRole }]);
-    setSelectedPropertyId("");
-  }
-
-  function handleRemoveAssignment(propertyId: number) {
-    setAssignments(assignments.filter((a) => a.property_id !== propertyId));
-  }
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
+  function handleCreate(values: UserFormValues) {
+    setFormError(null);
     createUserMutation.mutate(
+      { ...values, password: values.password ?? "" },
       {
-        name,
-        email,
-        password,
-        is_admin: isAdmin,
-        property_assignments: isAdmin ? [] : assignments,
-      },
-      {
-        onSuccess: () => {
-          setName("");
-          setEmail("");
-          setPassword("");
-          setIsAdmin(false);
-          setAssignments([]);
-        },
-        onError: (err) =>
-          setError(extractErrorMessage(err, "Benutzer konnte nicht angelegt werden.")),
+        onSuccess: () => setMode("idle"),
+        onError: () => setFormError("User konnte nicht angelegt werden."),
       },
     );
   }
 
-  function propertyName(propertyId: number): string {
-    return properties?.find((p) => p.property_id === propertyId)?.name ?? `#${propertyId}`;
+  function handleUpdate(userId: number, values: UserFormValues) {
+    setFormError(null);
+    updateUserMutation.mutate(
+      {
+        userId,
+        payload: {
+          name: values.name,
+          email: values.email,
+          is_admin: values.is_admin,
+          owner_id: values.owner_id,
+          tenant_id: values.tenant_id,
+          property_assignments: values.property_assignments,
+        },
+      },
+      {
+        onSuccess: () => setMode("idle"),
+        onError: () => setFormError("User konnte nicht aktualisiert werden."),
+      },
+    );
   }
+
+  function handleDelete(userId: number) {
+    if (!window.confirm("User wirklich löschen?")) return;
+    deleteUserMutation.mutate(userId);
+  }
+
+  const editingUser = typeof mode === "number" ? users?.find((u) => u.user_id === mode) ?? null : null;
 
   return (
     <div className="users-page">
       <Card>
-        <h1>Benutzer</h1>
-        {usersLoading && <p>Lädt…</p>}
+        <div className="users-page__header">
+          <h1>Nutzerverwaltung</h1>
+          {mode === "idle" && (
+            <button type="button" onClick={() => setMode("creating")}>
+              Neuer User
+            </button>
+          )}
+        </div>
+
+        {isLoading && <p>Lädt…</p>}
+
         <table className="users-page__table">
           <thead>
             <tr>
               <th>Name</th>
               <th>E-Mail</th>
               <th>Rolle</th>
-              <th>Passwortänderung ausstehend</th>
+              <th>Liegenschaften</th>
+              <th>Erstlogin ausstehend</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -89,113 +91,58 @@ export function UsersPage() {
               <tr key={user.user_id}>
                 <td>{user.name}</td>
                 <td>{user.email}</td>
-                <td>
-                  {user.is_admin ? (
-                    <span className="users-page__badge users-page__badge--admin">Admin</span>
-                  ) : user.property_assignments.length > 0 ? (
-                    <ul className="users-page__assignment-list">
-                      {user.property_assignments.map((a) => (
-                        <li key={a.property_id}>
-                          {propertyName(a.property_id)} ({a.role})
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="users-page__badge">ohne Zuordnung</span>
-                  )}
-                </td>
+                <td>{roleLabel(user)}</td>
+                <td>{user.property_assignments.length}</td>
                 <td>{user.must_change_password ? "Ja" : "Nein"}</td>
+                <td className="users-page__actions">
+                  <button type="button" onClick={() => setMode(user.user_id)}>
+                    Bearbeiten
+                  </button>
+                  <button type="button" onClick={() => handleDelete(user.user_id)}>
+                    Löschen
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </Card>
 
-      <Card>
-        <h2>Neuen Benutzer anlegen</h2>
-        <form onSubmit={handleSubmit} className="users-page__form">
-          <label>
-            Name
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
-          <label>
-            E-Mail
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </label>
-          <label>
-            Initiales Passwort
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-            />
-          </label>
-          <label className="users-page__checkbox">
-            <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
-            Administrator (globaler Zugriff, keine Objektzuordnung nötig)
-          </label>
+      {mode === "creating" && (
+        <Card>
+          <h2>Neuen User anlegen</h2>
+          <UserForm
+            requirePassword
+            submitLabel="Anlegen"
+            onSubmit={handleCreate}
+            onCancel={() => setMode("idle")}
+            isSubmitting={createUserMutation.isPending}
+            error={formError}
+          />
+        </Card>
+      )}
 
-          {!isAdmin && (
-            <fieldset className="users-page__assignments">
-              <legend>Liegenschaften zuordnen</legend>
-              <div className="users-page__assignment-picker">
-                <select
-                  value={selectedPropertyId}
-                  onChange={(e) =>
-                    setSelectedPropertyId(e.target.value ? Number(e.target.value) : "")
-                  }
-                >
-                  <option value="">Liegenschaft wählen…</option>
-                  {properties
-                    ?.filter((p) => !assignments.some((a) => a.property_id === p.property_id))
-                    .map((p) => (
-                      <option key={p.property_id} value={p.property_id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value as PropertyRole)}
-                >
-                  {PROPERTY_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" onClick={handleAddAssignment} disabled={!selectedPropertyId}>
-                  Hinzufügen
-                </button>
-              </div>
-
-              {assignments.length > 0 && (
-                <ul className="users-page__assignment-list">
-                  {assignments.map((a) => (
-                    <li key={a.property_id}>
-                      {propertyName(a.property_id)} ({a.role})
-                      <button
-                        type="button"
-                        className="users-page__remove-btn"
-                        onClick={() => handleRemoveAssignment(a.property_id)}
-                      >
-                        Entfernen
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </fieldset>
-          )}
-
-          {error && <p className="users-page__error">{error}</p>}
-          <button type="submit" disabled={createUserMutation.isPending}>
-            {createUserMutation.isPending ? "Wird gespeichert…" : "Anlegen"}
-          </button>
-        </form>
-      </Card>
+      {editingUser && (
+        <Card>
+          <h2>User bearbeiten: {editingUser.name}</h2>
+          <UserForm
+            requirePassword={false}
+            submitLabel="Speichern"
+            initialValues={{
+              name: editingUser.name,
+              email: editingUser.email,
+              is_admin: editingUser.is_admin,
+              owner_id: editingUser.owner_id,
+              tenant_id: editingUser.tenant_id,
+              property_assignments: editingUser.property_assignments,
+            }}
+            onSubmit={(values) => handleUpdate(editingUser.user_id, values)}
+            onCancel={() => setMode("idle")}
+            isSubmitting={updateUserMutation.isPending}
+            error={formError}
+          />
+        </Card>
+      )}
     </div>
   );
 }

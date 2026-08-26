@@ -1,3 +1,4 @@
+// frontend/src/features/auth/useAuth.ts
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -11,13 +12,6 @@ import {
 
 const CURRENT_USER_KEY = ["auth", "me"];
 
-/**
- * Kein eigener React-Context nötig: der React-Query-Cache übernimmt diese
- * Rolle bereits (jeder Aufruf von useCurrentUser() teilt sich denselben
- * Cache-Eintrag). retry:false, weil ein 401 hier ein normaler, erwarteter
- * Zustand ist ("nicht eingeloggt") - kein Netzwerkfehler, der
- * Wiederholungsversuche verdient.
- */
 export function useCurrentUser() {
   return useQuery<CurrentUser>({
     queryKey: CURRENT_USER_KEY,
@@ -47,13 +41,9 @@ export function useLogout() {
 }
 
 export function useForgotPassword() {
-  return useMutation({
-    mutationFn: forgotPassword,
-  });
+  return useMutation({ mutationFn: forgotPassword });
 }
 
 export function useResetPassword() {
-  return useMutation({
-    mutationFn: resetPassword,
-  });
+  return useMutation({ mutationFn: resetPassword });
 }

@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from "react";
+// frontend/src/features/auth/ResetPasswordPage.tsx
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { Card } from "../../components/Card";
@@ -7,37 +9,48 @@ import "./ResetPasswordPage.css";
 
 export function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") ?? "";
   const navigate = useNavigate();
-  // Token kommt normalerweise per Query-Param aus dem (noch simulierten)
-  // E-Mail-Link - manuelles Einfügen bleibt trotzdem möglich.
-  const [token, setToken] = useState(searchParams.get("token") ?? "");
+  const resetPasswordMutation = useResetPassword();
+
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [mismatchError, setMismatchError] = useState(false);
-  const resetPasswordMutation = useResetPassword();
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    setValidationError(null);
+
     if (newPassword !== confirmPassword) {
-      setMismatchError(true);
+      setValidationError("Die Passwörter stimmen nicht überein.");
       return;
     }
-    setMismatchError(false);
+
     resetPasswordMutation.mutate(
       { token, new_password: newPassword },
       { onSuccess: () => navigate("/login") },
     );
   }
 
+  if (!token) {
+    return (
+      <div className="reset-password-page">
+        <Card>
+          <h1>Passwort zurücksetzen</h1>
+          <p>Dieser Link ist unvollständig oder ungültig. Bitte fordere einen neuen Reset-Link an.</p>
+          <p>
+            <Link to="/forgot-password">Neuen Link anfordern</Link>
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="reset-password-page">
       <Card>
-        <h1>Neues Passwort festlegen</h1>
+        <h1>Neues Passwort vergeben</h1>
         <form onSubmit={handleSubmit} className="reset-password-form">
-          <label>
-            Reset-Token
-            <input type="text" value={token} onChange={(e) => setToken(e.target.value)} required />
-          </label>
           <label>
             Neues Passwort
             <input
@@ -60,21 +73,16 @@ export function ResetPasswordPage() {
               required
             />
           </label>
-          {mismatchError && (
-            <p className="reset-password-form__error">Die Passwörter stimmen nicht überein.</p>
-          )}
+          {validationError && <p className="reset-password-form__error">{validationError}</p>}
           {resetPasswordMutation.isError && (
             <p className="reset-password-form__error">
-              Token ungültig oder abgelaufen. Bitte fordern Sie einen neuen Link an.
+              Token ungültig oder abgelaufen. Bitte fordere einen neuen Reset-Link an.
             </p>
           )}
           <button type="submit" disabled={resetPasswordMutation.isPending}>
-            {resetPasswordMutation.isPending ? "Wird gespeichert…" : "Passwort speichern"}
+            {resetPasswordMutation.isPending ? "Wird gespeichert…" : "Passwort setzen"}
           </button>
         </form>
-        <p className="reset-password-page__back">
-          <Link to="/login">Zurück zur Anmeldung</Link>
-        </p>
       </Card>
     </div>
   );

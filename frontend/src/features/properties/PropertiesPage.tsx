@@ -1,3 +1,4 @@
+// frontend/src/features/properties/PropertiesPage.tsx
 import { useState } from "react";
 import type { FormEvent } from "react";
 
@@ -11,17 +12,29 @@ export function PropertiesPage() {
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [totalSquareMeters, setTotalSquareMeters] = useState("");
+  const [constructionYear, setConstructionYear] = useState("");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     createPropertyMutation.mutate(
-      { name, address },
+      {
+        name,
+        address,
+        total_square_meters: totalSquareMeters ? Number(totalSquareMeters) : null,
+        construction_year: constructionYear ? Number(constructionYear) : null,
+        description: description || null,
+      },
       {
         onSuccess: () => {
           setName("");
           setAddress("");
+          setTotalSquareMeters("");
+          setConstructionYear("");
+          setDescription("");
         },
         onError: () => setError("Liegenschaft konnte nicht angelegt werden."),
       },
@@ -37,6 +50,8 @@ export function PropertiesPage() {
           {properties?.map((property) => (
             <li key={property.property_id}>
               <strong>{property.name}</strong> — {property.address}
+              {property.total_square_meters != null && <> · {property.total_square_meters} m²</>}
+              {property.construction_year != null && <> · Baujahr {property.construction_year}</>}
             </li>
           ))}
         </ul>
@@ -52,6 +67,30 @@ export function PropertiesPage() {
           <label>
             Adresse
             <input value={address} onChange={(e) => setAddress(e.target.value)} required />
+          </label>
+          <label>
+            Wohn-/Nutzfläche gesamt (m²)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={totalSquareMeters}
+              onChange={(e) => setTotalSquareMeters(e.target.value)}
+            />
+          </label>
+          <label>
+            Baujahr
+            <input
+              type="number"
+              min="1800"
+              max={new Date().getFullYear()}
+              value={constructionYear}
+              onChange={(e) => setConstructionYear(e.target.value)}
+            />
+          </label>
+          <label>
+            Beschreibung
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </label>
           {error && <p className="properties-page__error">{error}</p>}
           <button type="submit" disabled={createPropertyMutation.isPending}>

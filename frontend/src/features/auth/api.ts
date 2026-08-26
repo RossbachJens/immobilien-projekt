@@ -1,3 +1,4 @@
+// frontend/src/features/auth/api.ts
 import { apiClient } from "../../api/client";
 
 export interface CurrentUser {
@@ -11,20 +12,6 @@ export interface CurrentUser {
 export interface LoginPayload {
   identifier: string;
   password: string;
-}
-
-export interface ForgotPasswordPayload {
-  identifier: string;
-}
-
-export interface ForgotPasswordResult {
-  detail: string;
-  dev_reset_token: string | null;
-}
-
-export interface ResetPasswordPayload {
-  token: string;
-  new_password: string;
 }
 
 export async function login(payload: LoginPayload): Promise<CurrentUser> {
@@ -41,11 +28,25 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
   return data;
 }
 
-export async function forgotPassword(
-  payload: ForgotPasswordPayload,
-): Promise<ForgotPasswordResult> {
+export interface ForgotPasswordPayload {
+  identifier: string;
+}
+
+export interface ForgotPasswordResult {
+  detail: string;
+  // Nur ausserhalb von production befuellt (settings.environment, s. auth.py) -
+  // Ersatz fuer den noch fehlenden E-Mail-Versand (PROJECTPLAN.md, Phase 7).
+  dev_reset_token: string | null;
+}
+
+export async function forgotPassword(payload: ForgotPasswordPayload): Promise<ForgotPasswordResult> {
   const { data } = await apiClient.post<ForgotPasswordResult>("/auth/forgot-password", payload);
   return data;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  new_password: string;
 }
 
 export async function resetPassword(payload: ResetPasswordPayload): Promise<void> {

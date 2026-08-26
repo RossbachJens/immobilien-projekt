@@ -53,3 +53,11 @@
 .properties-page__error {
   color: var(--color-error);
 }
+/* frontend/src/features/properties/PropertiesPage.css — ergänzen */
+.properties-page__form textarea {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
+}

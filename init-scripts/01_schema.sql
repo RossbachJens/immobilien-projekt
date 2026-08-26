@@ -19,6 +19,7 @@
 -- pgcrypto wird für die Verschlüsselung von Bankverbindungsdaten
 -- (IBAN/BIC) benötigt -> Art. 32 DSGVO ("Stand der Technik").
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- für den EXCLUDE-Constraint unten
 
 -- ---------------------------------------------------------------------
 -- 1. ENUM-TYPEN
@@ -173,12 +174,30 @@ CREATE TABLE unit_allocation_keys (
     property_id            INT NOT NULL REFERENCES properties(property_id),
     unit_id                 INT NOT NULL REFERENCES units(unit_id),
     key_type                VARCHAR(50) NOT NULL,
-    billing_year            INT NOT NULL,
     numerator_value          NUMERIC(10,4) NOT NULL CHECK (numerator_value >= 0),
     denominator_value        NUMERIC(10,4) NOT NULL CHECK (denominator_value > 0),
-    UNIQUE (unit_id, key_type, billing_year)
+    -- Gültigkeitszeitraum statt einzelnem billing_year (s. PROJECTPLAN.md,
+    -- Grundsatzentscheidung "Umlageschlüssel-Gültigkeit"). valid_to_year = NULL
+    -- bedeutet "aktuell gültig / bis auf Weiteres". Ein Wechsel ist fachlich nur
+    -- zum naechsten 01.01. zulaessig - diese Regel wird NICHT hier als starres
+    -- CHECK erzwungen (siehe Kommentar oben), sondern erst in der Service-
+    -- Schicht (Phase 5).
+    valid_from_year          INT NOT NULL,
+    valid_to_year             INT,
+    CHECK (valid_to_year IS NULL OR valid_to_year >= valid_from_year)
 );
 
+-- Verhindert überlappende Gültigkeitszeiträume je Einheit+Schlüsseltyp
+-- (ersetzt das alte UNIQUE(unit_id, key_type, billing_year)). NULL wird als
+-- "unendlich" über einen Sentinel-Wert abgebildet, da int4range keine
+-- echten unbegrenzten Ganzzahl-Grenzen kennt.
+ALTER TABLE unit_allocation_keys
+    ADD CONSTRAINT excl_unit_allocation_keys_no_overlap
+    EXCLUDE USING gist (
+        unit_id WITH =,
+        key_type WITH =,
+        int4range(valid_from_year, COALESCE(valid_to_year, 999999) + 1) WITH &&
+    );
 -- ------------------------------ leases -------------------------------------
 CREATE TABLE leases (
     lease_id                    INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

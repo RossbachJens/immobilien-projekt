@@ -1,9 +1,8 @@
+# backend/app/schemas/auth.py
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class LoginRequest(BaseModel):
-    # Login funktioniert wahlweise mit E-Mail oder Name (app/routers/auth.py
-    # ::login) - "identifier" statt "email", weil hier beides reinkommen kann.
     identifier: str
     password: str
 
@@ -24,9 +23,6 @@ class ForgotPasswordRequest(BaseModel):
 
 class ForgotPasswordResponse(BaseModel):
     detail: str
-    # Nur befuellt, wenn settings.environment != "production" UND ein Konto
-    # gefunden wurde - Ersatz fuer den noch fehlenden E-Mail-Versand
-    # (PROJECTPLAN.md, Phase 7). Niemals in Produktion befuellen.
     dev_reset_token: str | None = None
 
 

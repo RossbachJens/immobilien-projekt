@@ -51,10 +51,10 @@ VALUES ('Andreas', 'Becker', 'becker@mieter.de', 'Sonnenallee 45', '10243', 'Ber
 INSERT INTO leases (unit_id, tenant_id, start_date, end_date, cold_rent, additional_costs_prepayment)
 VALUES (1, 1, '2024-06-01', NULL, 750.00, 180.00);
 
--- 6. Umlageschlüssel
-INSERT INTO unit_allocation_keys (property_id, unit_id, key_type, billing_year, numerator_value, denominator_value) VALUES
-(1, 1, 'Heizkosten_Verbrauch', 2026, 3500.00, 10000.00),
-(1, 2, 'Heizkosten_Verbrauch', 2026, 6500.00, 10000.00);
+-- 6. Umlageschlüssel (gültig ab 2026, bis auf Weiteres)
+INSERT INTO unit_allocation_keys (property_id, unit_id, key_type, numerator_value, denominator_value, valid_from_year, valid_to_year) VALUES
+(1, 1, 'Heizkosten_Verbrauch', 3500.00, 10000.00, 2026, NULL),
+(1, 2, 'Heizkosten_Verbrauch', 6500.00, 10000.00, 2026, NULL);
 
 -- Bewusst keine User mehr hier: Der erste Admin wird per CLI angelegt
 -- (app/cli.py, siehe unten), nicht mehr durch dieses Seed-Skript.

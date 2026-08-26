@@ -1,3 +1,4 @@
+// frontend/src/features/users/api.ts
 import { apiClient } from "../../api/client";
 
 export type PropertyRole = "Verwalter" | "Buchhalter" | "Lesezugriff";
@@ -13,16 +14,29 @@ export interface AdminUser {
   email: string;
   is_admin: boolean;
   must_change_password: boolean;
+  owner_id: number | null;
+  tenant_id: number | null;
   created_at: string;
   property_assignments: PropertyAssignment[];
 }
 
-export interface UserCreatePayload {
+export interface CreateUserPayload {
   name: string;
   email: string;
   password: string;
   is_admin: boolean;
+  owner_id?: number | null;
+  tenant_id?: number | null;
   property_assignments: PropertyAssignment[];
+}
+
+export interface UpdateUserPayload {
+  name?: string;
+  email?: string;
+  is_admin?: boolean;
+  owner_id?: number | null;
+  tenant_id?: number | null;
+  property_assignments?: PropertyAssignment[];
 }
 
 export async function listUsers(): Promise<AdminUser[]> {
@@ -30,7 +44,16 @@ export async function listUsers(): Promise<AdminUser[]> {
   return data;
 }
 
-export async function createUser(payload: UserCreatePayload): Promise<AdminUser> {
+export async function createUser(payload: CreateUserPayload): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>("/users", payload);
   return data;
+}
+
+export async function updateUser(userId: number, payload: UpdateUserPayload): Promise<AdminUser> {
+  const { data } = await apiClient.patch<AdminUser>(`/users/${userId}`, payload);
+  return data;
+}
+
+export async function deleteUser(userId: number): Promise<void> {
+  await apiClient.delete(`/users/${userId}`);
 }
