@@ -1,0 +1,73 @@
+/* frontend/src/features/units/UnitsPage.css */
+.units-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.units-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.units-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.units-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.units-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.units-page__list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.units-page__unit {
+  border: 1px solid #eee;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+}
+
+.units-page__unit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.units-page__unit-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.units-page__unit-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}

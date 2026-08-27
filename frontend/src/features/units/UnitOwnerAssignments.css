@@ -1,0 +1,94 @@
+/* frontend/src/features/units/UnitOwnerAssignments.css */
+.unit-owner-assignments {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+}
+
+.unit-owner-assignments h4 {
+  margin-bottom: 0.5rem;
+}
+
+.unit-owner-assignments__empty {
+  color: #777;
+  font-style: italic;
+}
+
+.unit-owner-assignments__list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: var(--space-1);
+}
+
+.unit-owner-assignments__list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.unit-owner-assignments__list button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.unit-owner-assignments__history summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.unit-owner-assignments__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.unit-owner-assignments__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.unit-owner-assignments__form input,
+.unit-owner-assignments__form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.unit-owner-assignments__error {
+  color: var(--color-error);
+}
+
+.unit-owner-assignments__form-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.unit-owner-assignments__form-actions button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.unit-owner-assignments__form-actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.unit-owner-assignments__form-actions button[type="button"] {
+  background-color: var(--color-light);
+}

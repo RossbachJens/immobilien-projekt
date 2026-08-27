@@ -1,103 +1,98 @@
 // frontend/src/features/properties/PropertiesPage.tsx
 import { useState } from "react";
-import type { FormEvent } from "react";
 
 import { Card } from "../../components/Card";
-import { useCreateProperty, useProperties } from "./useProperties";
+import type { PropertyPayload } from "./api";
+import { PropertyForm } from "./PropertyForm";
+import { useCreateProperty, useProperties, useUpdateProperty } from "./useProperties";
 import "./PropertiesPage.css";
 
 export function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
   const createPropertyMutation = useCreateProperty();
+  const updatePropertyMutation = useUpdateProperty();
 
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [totalSquareMeters, setTotalSquareMeters] = useState("");
-  const [constructionYear, setConstructionYear] = useState("");
-  const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"idle" | "creating" | number>("idle");
+  const [formError, setFormError] = useState<string | null>(null);
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    createPropertyMutation.mutate(
+  function handleCreate(payload: PropertyPayload) {
+    setFormError(null);
+    createPropertyMutation.mutate(payload, {
+      onSuccess: () => setMode("idle"),
+      onError: () => setFormError("Liegenschaft konnte nicht angelegt werden."),
+    });
+  }
+
+  function handleUpdate(propertyId: number, payload: PropertyPayload) {
+    setFormError(null);
+    updatePropertyMutation.mutate(
+      { propertyId, payload },
       {
-        name,
-        address,
-        total_square_meters: totalSquareMeters ? Number(totalSquareMeters) : null,
-        construction_year: constructionYear ? Number(constructionYear) : null,
-        description: description || null,
-      },
-      {
-        onSuccess: () => {
-          setName("");
-          setAddress("");
-          setTotalSquareMeters("");
-          setConstructionYear("");
-          setDescription("");
-        },
-        onError: () => setError("Liegenschaft konnte nicht angelegt werden."),
+        onSuccess: () => setMode("idle"),
+        onError: () => setFormError("Liegenschaft konnte nicht aktualisiert werden."),
       },
     );
   }
 
+  const editingProperty =
+    typeof mode === "number" ? properties?.find((p) => p.property_id === mode) ?? null : null;
+
   return (
     <div className="properties-page">
       <Card>
-        <h1>Liegenschaften</h1>
+        <div className="properties-page__header">
+          <h1>Liegenschaften</h1>
+          {mode === "idle" && (
+            <button type="button" onClick={() => setMode("creating")}>
+              Neue Liegenschaft
+            </button>
+          )}
+        </div>
         {isLoading && <p>Lädt…</p>}
         <ul className="properties-page__list">
           {properties?.map((property) => (
             <li key={property.property_id}>
-              <strong>{property.name}</strong> — {property.address}
-              {property.total_square_meters != null && <> · {property.total_square_meters} m²</>}
-              {property.construction_year != null && <> · Baujahr {property.construction_year}</>}
+              <div>
+                <strong>{property.name}</strong> — {property.address}
+                {property.total_square_meters != null && <> · {property.total_square_meters} m²</>}
+                {property.construction_year != null && <> · Baujahr {property.construction_year}</>}
+                {property.total_mea != null && <> · MEA gesamt {property.total_mea}</>}
+              </div>
+              <button type="button" onClick={() => setMode(property.property_id)}>
+                Bearbeiten
+              </button>
             </li>
           ))}
         </ul>
       </Card>
 
-      <Card>
-        <h2>Neue Liegenschaft anlegen</h2>
-        <form onSubmit={handleSubmit} className="properties-page__form">
-          <label>
-            Name
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
-          <label>
-            Adresse
-            <input value={address} onChange={(e) => setAddress(e.target.value)} required />
-          </label>
-          <label>
-            Wohn-/Nutzfläche gesamt (m²)
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={totalSquareMeters}
-              onChange={(e) => setTotalSquareMeters(e.target.value)}
-            />
-          </label>
-          <label>
-            Baujahr
-            <input
-              type="number"
-              min="1800"
-              max={new Date().getFullYear()}
-              value={constructionYear}
-              onChange={(e) => setConstructionYear(e.target.value)}
-            />
-          </label>
-          <label>
-            Beschreibung
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-          </label>
-          {error && <p className="properties-page__error">{error}</p>}
-          <button type="submit" disabled={createPropertyMutation.isPending}>
-            {createPropertyMutation.isPending ? "Wird gespeichert…" : "Anlegen"}
-          </button>
-        </form>
-      </Card>
+      {mode === "creating" && (
+        <Card>
+          <h2>Neue Liegenschaft anlegen</h2>
+          <PropertyForm
+            submitLabel="Anlegen"
+            onSubmit={handleCreate}
+            onCancel={() => setMode("idle")}
+            isSubmitting={createPropertyMutation.isPending}
+            error={formError}
+          />
+        </Card>
+      )}
+
+      {editingProperty && (
+        <Card>
+          <h2>Liegenschaft bearbeiten: {editingProperty.name}</h2>
+          <PropertyForm
+            key={editingProperty.property_id}
+            initialValues={editingProperty}
+            submitLabel="Speichern"
+            onSubmit={(payload) => handleUpdate(editingProperty.property_id, payload)}
+            onCancel={() => setMode("idle")}
+            isSubmitting={updatePropertyMutation.isPending}
+            error={formError}
+          />
+        </Card>
+      )}
     </div>
   );
 }

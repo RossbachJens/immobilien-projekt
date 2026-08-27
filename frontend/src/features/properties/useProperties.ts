@@ -1,6 +1,7 @@
+// frontend/src/features/properties/useProperties.ts
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createProperty, listProperties, type PropertyCreatePayload } from "./api";
+import { createProperty, listProperties, updateProperty, type PropertyPayload } from "./api";
 
 const PROPERTIES_KEY = ["properties"];
 
@@ -14,7 +15,18 @@ export function useProperties() {
 export function useCreateProperty() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: PropertyCreatePayload) => createProperty(payload),
+    mutationFn: (payload: PropertyPayload) => createProperty(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PROPERTIES_KEY });
+    },
+  });
+}
+
+export function useUpdateProperty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ propertyId, payload }: { propertyId: number; payload: Partial<PropertyPayload> }) =>
+      updateProperty(propertyId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROPERTIES_KEY });
     },

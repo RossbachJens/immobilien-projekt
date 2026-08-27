@@ -9,6 +9,7 @@ class PropertyCreate(BaseModel):
     address: str = Field(min_length=1)
     total_square_meters: float | None = Field(default=None, gt=0)
     construction_year: int | None = None
+    total_mea: float | None = Field(default=None, gt=0)
     description: str | None = None
 
 
@@ -17,6 +18,7 @@ class PropertyUpdate(BaseModel):
     address: str | None = Field(default=None, min_length=1)
     total_square_meters: float | None = Field(default=None, gt=0)
     construction_year: int | None = None
+    total_mea: float | None = Field(default=None, gt=0)
     description: str | None = None
 
 
@@ -28,5 +30,6 @@ class PropertyOut(BaseModel):
     address: str
     total_square_meters: float | None
     construction_year: int | None
+    total_mea: float | None
     description: str | None
     created_at: datetime

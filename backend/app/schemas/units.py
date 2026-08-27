@@ -12,6 +12,7 @@ class UnitCreate(BaseModel):
     unit_number: str = Field(min_length=1, max_length=20)
     floor: str | None = Field(default=None, max_length=20)
     square_meters: float = Field(gt=0)
+    mea: float | None = Field(default=None, gt=0)
     unit_type: UnitType | None = None
 
 
@@ -19,6 +20,7 @@ class UnitUpdate(BaseModel):
     unit_number: str | None = Field(default=None, min_length=1, max_length=20)
     floor: str | None = Field(default=None, max_length=20)
     square_meters: float | None = Field(default=None, gt=0)
+    mea: float | None = Field(default=None, gt=0)
     unit_type: UnitType | None = None
 
 
@@ -30,6 +32,7 @@ class UnitOut(BaseModel):
     unit_number: str
     floor: str | None
     square_meters: float
+    mea: float | None
     unit_type: str | None
 
 

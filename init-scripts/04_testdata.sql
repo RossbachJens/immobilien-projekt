@@ -1,6 +1,6 @@
 -- 1. Liegenschaft
-INSERT INTO properties (name, address, total_square_meters, construction_year, description)
-VALUES ('WEG Sonnenblick', 'Sonnenallee 45, 10243 Berlin', 1250.50, 1996,
+INSERT INTO properties (name, address, total_square_meters, construction_year, total_mea, description)
+VALUES ('WEG Sonnenblick', 'Sonnenallee 45, 10243 Berlin', 1250.50, 1996, 1000.00,
         'Wohnanlage bestehend aus 3 Wohngebäuden. Teilsaniert 2018.');
 
 -- 2. SKR 04 Finanzkonten
@@ -27,10 +27,10 @@ VALUES
 SELECT setval(pg_get_serial_sequence('accounts', 'account_id'), (SELECT MAX(account_id) FROM accounts));
 
 -- 3. Einheiten
-INSERT INTO units (property_id, unit_number, floor, square_meters, unit_type) VALUES
-(1, 'WE 01', 'EG links', 65.00, 'Wohnung'),
-(1, 'WE 02', '1. OG rechts', 85.00, 'Wohnung'),
-(1, 'WE 03', '2. OG links', 50.00, 'Wohnung');
+INSERT INTO units (property_id, unit_number, floor, square_meters, mea, unit_type) VALUES
+(1, 'WE 01', 'EG links', 65.00, 168.47, 'Wohnung'),
+(1, 'WE 02', '1. OG rechts', 85.00, 220.00, 'Wohnung'),
+(1, 'WE 03', '2. OG links', 50.00, 130.00, 'Wohnung');
 
 -- 4. Eigentümer
 -- iban_encrypted/bic_encrypted bleiben NULL: die Verschlüsselung braucht den

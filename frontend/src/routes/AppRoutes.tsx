@@ -8,6 +8,7 @@ import { HealthStatus } from "../features/health/HealthStatus";
 import { OwnersPage } from "../features/owners/OwnersPage";
 import { PropertiesPage } from "../features/properties/PropertiesPage";
 import { TenantsPage } from "../features/tenants/TenantsPage";
+import { UnitsPage } from "../features/units/UnitsPage";
 import { UsersPage } from "../features/users/UsersPage";
 import { MainLayout } from "../layouts/MainLayout";
 import { AdminRoute } from "./AdminRoute";
@@ -23,6 +24,7 @@ export function AppRoutes() {
       <Route element={<MainLayout />}>
         <Route path="/" element={<ProtectedRoute><HealthStatus /></ProtectedRoute>} />
         <Route path="/properties" element={<ProtectedRoute><PropertiesPage /></ProtectedRoute>} />
+        <Route path="/units" element={<ProtectedRoute><UnitsPage /></ProtectedRoute>} />
         <Route path="/owners" element={<ProtectedRoute><OwnersPage /></ProtectedRoute>} />
         <Route path="/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
         <Route

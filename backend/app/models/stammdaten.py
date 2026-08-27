@@ -1,3 +1,4 @@
+# backend/app/models/stammdaten.py
 from datetime import date, datetime
 
 from sqlalchemy import CheckConstraint, ForeignKey, LargeBinary, Numeric, String, Text, func
@@ -8,12 +9,14 @@ from app.db.base import Base
 
 class Property(Base):
     __tablename__ = "properties"
+    __table_args__ = (CheckConstraint("total_mea > 0", name="ck_properties_total_mea_positive"),)
 
     property_id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     address: Mapped[str] = mapped_column(Text)
     total_square_meters: Mapped[float | None] = mapped_column(Numeric(10, 2))
     construction_year: Mapped[int | None]
+    total_mea: Mapped[float | None] = mapped_column(Numeric(10, 2))
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -24,13 +27,17 @@ class Property(Base):
 
 class Unit(Base):
     __tablename__ = "units"
-    __table_args__ = (CheckConstraint("square_meters > 0"),)
+    __table_args__ = (
+        CheckConstraint("square_meters > 0"),
+        CheckConstraint("mea > 0", name="ck_units_mea_positive"),
+    )
 
     unit_id: Mapped[int] = mapped_column(primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.property_id"))
     unit_number: Mapped[str] = mapped_column(String(20))
     floor: Mapped[str | None] = mapped_column(String(20))
     square_meters: Mapped[float] = mapped_column(Numeric(6, 2))
+    mea: Mapped[float | None] = mapped_column(Numeric(10, 2))
     unit_type: Mapped[str | None] = mapped_column(String(30))
     deleted_at: Mapped[datetime | None]
 
@@ -50,7 +57,6 @@ class Owner(Base):
     postal_code: Mapped[str | None] = mapped_column(String(10))
     city: Mapped[str | None] = mapped_column(String(100))
     bank_name: Mapped[str | None] = mapped_column(String(100))
-    # DSGVO: verschlüsselt gespeichert (pgcrypto), niemals im Klartext im ORM.
     iban_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
     bic_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
     iban_last4: Mapped[str | None] = mapped_column(String(4))
@@ -95,9 +101,6 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     google_sub_id: Mapped[str | None] = mapped_column(String(255))
     must_change_password: Mapped[bool]
-    # Phase 1: globale Admin-Rolle. Eigentümer/Mieter ergeben sich aus
-    # owner_id/tenant_id, Verwalter granular aus user_properties -
-    # siehe app/core/roles.py::resolve_role.
     is_admin: Mapped[bool] = mapped_column(default=False)
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
     tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.tenant_id"))

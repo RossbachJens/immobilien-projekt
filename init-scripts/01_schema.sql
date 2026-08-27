@@ -34,12 +34,18 @@ CREATE TYPE property_role   AS ENUM ('Verwalter', 'Buchhalter', 'Lesezugriff');
 -- =====================================================================
 
 -- --------------------------- properties -------------------------------
+-- ---------------------------------------------------------------------
+-- properties
+-- ---------------------------------------------------------------------
 CREATE TABLE properties (
     property_id           INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name                   VARCHAR(100) NOT NULL,
     address                TEXT NOT NULL,
     total_square_meters    NUMERIC(10,2) CHECK (total_square_meters > 0),
     construction_year      INT CHECK (construction_year <= EXTRACT(YEAR FROM CURRENT_DATE)),
+    -- Nenner für die Verteilung nach § 16 WEG (z.B. 1000 oder 10000). Die
+    -- einzelnen Einheiten tragen ihren Anteil daran in units.mea (Zähler).
+    total_mea              NUMERIC(10,2) CHECK (total_mea > 0),
     description            TEXT,
     created_at             TIMESTAMP NOT NULL DEFAULT now(),
     updated_at             TIMESTAMP NOT NULL DEFAULT now(),
@@ -53,6 +59,9 @@ CREATE TABLE units (
     unit_number    VARCHAR(20) NOT NULL,
     floor          VARCHAR(20),
     square_meters  NUMERIC(6,2) NOT NULL CHECK (square_meters > 0),
+    -- Miteigentumsanteil dieser Einheit (Zähler) - Anteil am total_mea der
+    -- zugehörigen Liegenschaft, z.B. 168.47 von insgesamt 1000.
+    mea            NUMERIC(10,2) CHECK (mea > 0),
     unit_type      VARCHAR(30) CHECK (unit_type IN ('Wohnung', 'Stellplatz', 'Gewerbe')),
     deleted_at     TIMESTAMPTZ,
     UNIQUE (property_id, unit_number)

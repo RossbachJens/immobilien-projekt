@@ -14,9 +14,10 @@ export function Navbar() {
         <Link to="/" className="navbar__logo">
           Immobilien- &amp; WEG-Verwaltung
         </Link>
-  {user && (
+{user && (
   <nav className="navbar__links">
     <Link to="/properties">Liegenschaften</Link>
+    <Link to="/units">Einheiten</Link>
     <Link to="/owners">Eigentümer</Link>
     <Link to="/tenants">Mieter</Link>
     {user.is_admin && <Link to="/users">Nutzerverwaltung</Link>}
