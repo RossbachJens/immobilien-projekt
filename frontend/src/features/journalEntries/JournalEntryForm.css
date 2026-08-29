@@ -96,6 +96,7 @@
   font-style: italic;
 }
 
+
 .journal-entry-form__error {
   color: var(--color-error);
 }
@@ -119,4 +120,9 @@
 
 .journal-entry-form__actions button[type="button"] {
   background-color: var(--color-light);
+}
+
+/* frontend/src/features/journalEntries/JournalEntryForm.css — ergänzen */
+.journal-entry-form__line select {
+  min-width: 0; /* verhindert, dass lange Options die Grid-Spalte sprengen */
 }

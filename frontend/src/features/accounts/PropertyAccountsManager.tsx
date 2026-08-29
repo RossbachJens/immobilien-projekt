@@ -4,6 +4,8 @@ import type { FormEvent } from "react";
 
 import type { AccountType } from "./api";
 import { useAccounts, useCreateAccount, useUpdateAccount } from "./useAccounts";
+// frontend/src/features/accounts/PropertyAccountsManager.tsx — Import ergänzen
+import { accountLabel } from "./format";
 import "./PropertyAccountsManager.css";
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
@@ -75,12 +77,12 @@ export function PropertyAccountsManager({ propertyId }: PropertyAccountsManagerP
       {ownAccounts.length > 0 && (
         <ul className="property-accounts-manager__list">
           {ownAccounts.map((a) => (
-            <li
-              key={a.account_id}
-              className={a.is_active ? undefined : "property-accounts-manager__row--inactive"}
-            >
-              <span>
-                {a.account_number} – {a.account_name} ({a.type})
+              <li
+                key={a.account_id}
+                className={a.is_active ? undefined : "property-accounts-manager__row--inactive"}
+              >
+              <span className="property-accounts-manager__account-name" title={accountLabel(a)}>
+                {accountLabel(a)} ({a.type})
               </span>
               <button type="button" onClick={() => toggleActive(a.account_id, a.is_active)}>
                 {a.is_active ? "Deaktivieren" : "Aktivieren"}

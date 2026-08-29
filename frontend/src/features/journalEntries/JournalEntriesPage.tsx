@@ -9,6 +9,8 @@ import { useUnits } from "../units/useUnits";
 import type { JournalEntryPayload } from "./api";
 import { JournalEntryForm } from "./JournalEntryForm";
 import { useCreateJournalEntry, useJournalEntries, useStornoJournalEntry } from "./useJournalEntries";
+// frontend/src/features/journalEntries/JournalEntriesPage.tsx — Import ergänzen
+import { accountLabel } from "../accounts/format";
 import "./JournalEntriesPage.css";
 
 export function JournalEntriesPage() {
@@ -159,7 +161,10 @@ export function JournalEntriesPage() {
                         <tbody>
                           {entry.lines.map((line) => (
                             <tr key={line.line_id}>
-                              <td>{accountLabel(line.account_id)}</td>
+                              // bestehende lokale accountLabel-Funktion entfernen und stattdessen im JSX:
+                              <td title={accounts ? accountLabel(accounts.find((a) => a.account_id === line.account_id) ?? { account_number: "", account_name: `Konto #${line.account_id}` }) : ""}>
+                                {accountLabel(accounts?.find((a) => a.account_id === line.account_id) ?? { account_number: "", account_name: `Konto #${line.account_id}` })}
+                              </td>
                               <td>{unitLabel(line.unit_id)}</td>
                               <td>{line.direction === "DEBIT" ? `${line.amount.toFixed(2)} €` : ""}</td>
                               <td>{line.direction === "CREDIT" ? `${line.amount.toFixed(2)} €` : ""}</td>

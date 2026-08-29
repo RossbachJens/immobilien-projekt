@@ -7,6 +7,8 @@ import { useAccounts } from "../accounts/useAccounts";
 
 import type { EntryDirection, JournalEntryPayload } from "./api";
 import "./JournalEntryForm.css";
+// frontend/src/features/journalEntries/JournalEntryForm.tsx — Import ergänzen
+import { accountLabel, accountLabelShort } from "../accounts/format";
 
 interface FormLine {
   key: string;
@@ -169,12 +171,14 @@ export function JournalEntryForm({
               required
             >
               <option value="">– Konto wählen –</option>
-              {accounts?.map((a) => (
-                <option key={a.account_id} value={a.account_id}>
-                  {a.account_number} – {a.account_name}
-                  {a.property_id != null ? " (eigen)" : ""}
-                </option>
-              ))}
+               
+                  {accounts?.map((a) => (
+                    <option key={a.account_id} value={a.account_id} title={accountLabel(a)}>
+                      {accountLabelShort(a)}
+                      {a.property_id != null ? " (eigen)" : ""}
+                    </option>
+                  ))}
+
             </select>
 
             

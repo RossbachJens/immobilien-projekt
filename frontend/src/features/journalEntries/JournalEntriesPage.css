@@ -45,6 +45,7 @@
   gap: var(--space-1);
 }
 
+
 .journal-entries-page__entry {
   border: 1px solid #eee;
   border-radius: var(--radius-card);
@@ -99,4 +100,12 @@
   padding: 0.3rem 0.5rem;
   border-bottom: 1px solid #eee;
   font-size: 0.9rem;
+}
+
+/* frontend/src/features/journalEntries/JournalEntriesPage.css — ergänzen */
+.journal-entries-page__lines-table td:first-child {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

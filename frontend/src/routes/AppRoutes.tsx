@@ -14,6 +14,7 @@ import { UsersPage } from "../features/users/UsersPage";
 import { MainLayout } from "../layouts/MainLayout";
 import { AdminRoute } from "./AdminRoute";
 import { ProtectedRoute } from "./ProtectedRoute";
+import { ResolutionsPage } from "../features/resolutions/ResolutionsPage";
 
 export function AppRoutes() {
   return (
@@ -29,6 +30,7 @@ export function AppRoutes() {
         <Route path="/owners" element={<ProtectedRoute><OwnersPage /></ProtectedRoute>} />
         <Route path="/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
         <Route path="/journal-entries" element={<ProtectedRoute><JournalEntriesPage /></ProtectedRoute>} />
+        <Route path="/resolutions" element={<ProtectedRoute><ResolutionsPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={

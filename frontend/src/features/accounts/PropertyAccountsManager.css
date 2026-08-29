@@ -97,3 +97,16 @@
 .property-accounts-manager__form-actions button[type="button"] {
   background-color: var(--color-light);
 }
+
+/* frontend/src/features/accounts/PropertyAccountsManager.css — ergänzen */
+.property-accounts-manager__list li {
+  min-width: 0;
+}
+
+.property-accounts-manager__account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
