@@ -3,8 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routers import auth, health, owners, properties, tenants, units, users
-
+from app.routers import accounts, auth, health, journal_entries, owners, properties, tenants, units, users
 app = FastAPI(
     title="Immobilien- & WEG-Verwaltung API",
     version="0.1.0",
@@ -25,6 +24,8 @@ app.include_router(units.router)
 app.include_router(owners.router)
 app.include_router(tenants.router)
 app.include_router(users.router)
+app.include_router(accounts.router)
+app.include_router(journal_entries.router)
 
 # Noch offen:
 #   - access_log-Middleware (protokolliert Zugriffe auf personenbezogene Daten)

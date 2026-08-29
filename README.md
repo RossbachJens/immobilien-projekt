@@ -14,6 +14,10 @@ Dieses Projekt stellt eine revisionssichere, datenbankseitig validierte Software
 *   **Google OAuth2 (SSO):** Hybrid-Authentifizierung in der Tabelle `users` erlaubt traditionelle E-Mail-Anmeldungen (inkl. Erstanmeldungs-Passwortzwang `must_change_password`) sowie sichere Google Sign-Ons via `google_sub_id`.
 *   **Vollständiges Stammdaten-CRUD:** Objekte, Einheiten und Eigentümer-/Mieter-Stammdaten (inkl. verschlüsselter Bankverbindung) lassen sich über die API vollständig anlegen, ändern und (soft-)löschen. Eigentümer/Mieter benötigen dafür keinen eigenen Online-Zugang - dieser wird optional und getrennt über die Nutzerverwaltung vergeben.
 
+*   **Doppelte Buchführung mit Storno-Pflicht:** Buchungen (`journal_entries`/`entry_lines`) werden nie verändert oder gelöscht - Korrekturen laufen ausschließlich über eine Gegenbuchung (`POST /journal-entries/{id}/storno`), die Soll und Haben spiegelt und über `reversed_entry_id` rückverfolgbar bleibt.
+*   **SKR 04 - global und liegenschaftseigen:** Der Standard-Kontenrahmen (`accounts.property_id IS NULL`) ist zentral gepflegt; Verwalter können zusätzlich eigene 4-stellige Konten je Liegenschaft anlegen (`accounts.property_id` gesetzt), z.B. für Sonderpositionen, die im Standardrahmen fehlen. Zwei partielle Unique-Indizes verhindern doppelte Kontonummern - getrennt für globale und liegenschaftseigene Konten.
+*   **Buchungen bleiben liegenschaftsbezogen:** Eine manuelle Buchung wird nie direkt einer Einheit zugeordnet - die Aufteilung auf Einheiten erfolgt erst bei der Nebenkostenabrechnung über den Umlageschlüssel (Phase 5).
+
 ## 📁 Projektstruktur
 
 ```text

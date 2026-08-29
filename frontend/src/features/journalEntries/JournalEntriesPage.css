@@ -1,0 +1,102 @@
+/* frontend/src/features/journalEntries/JournalEntriesPage.css */
+.journal-entries-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.journal-entries-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.journal-entries-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.journal-entries-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.journal-entries-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.journal-entries-page__list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.journal-entries-page__entry {
+  border: 1px solid #eee;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+}
+
+.journal-entries-page__entry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.journal-entries-page__entry-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.journal-entries-page__entry-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.journal-entries-page__badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  background-color: var(--color-light);
+  color: #555;
+}
+
+.journal-entries-page__badge--reversed {
+  background-color: #fbeaea;
+  color: var(--color-error);
+}
+
+.journal-entries-page__lines-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-1);
+}
+
+.journal-entries-page__lines-table th,
+.journal-entries-page__lines-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}

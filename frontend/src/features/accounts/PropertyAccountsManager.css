@@ -1,0 +1,99 @@
+/* frontend/src/features/accounts/PropertyAccountsManager.css */
+.property-accounts-manager__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.property-accounts-manager__header button {
+  padding: 0.4rem 0.8rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.property-accounts-manager__empty {
+  color: #777;
+  font-style: italic;
+}
+
+.property-accounts-manager__list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-1) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.property-accounts-manager__list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.property-accounts-manager__row--inactive {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.property-accounts-manager__list button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.property-accounts-manager__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 360px;
+  margin-top: var(--space-1);
+}
+
+.property-accounts-manager__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.property-accounts-manager__form input,
+.property-accounts-manager__form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.property-accounts-manager__error {
+  color: var(--color-error);
+}
+
+.property-accounts-manager__form-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.property-accounts-manager__form-actions button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.property-accounts-manager__form-actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.property-accounts-manager__form-actions button[type="button"] {
+  background-color: var(--color-light);
+}

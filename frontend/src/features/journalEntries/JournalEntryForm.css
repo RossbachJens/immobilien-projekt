@@ -1,0 +1,122 @@
+/* frontend/src/features/journalEntries/JournalEntryForm.css */
+.journal-entry-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 700px;
+}
+
+.journal-entry-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 400px;
+}
+
+.journal-entry-form input,
+.journal-entry-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.journal-entry-form__lines {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.journal-entry-form__lines-header,
+.journal-entry-form__line {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.journal-entry-form__lines-header {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.journal-entry-form__line button {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.journal-entry-form__line button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.journal-entry-form__add-line {
+  align-self: flex-start;
+  padding: 0.4rem 0.8rem;
+  border: 1px dashed #999;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.journal-entry-form__balance {
+  font-weight: 700;
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+.journal-entry-form__balance--ok {
+  background-color: #e6f4e6;
+  color: var(--color-success);
+}
+
+.journal-entry-form__balance--off {
+  background-color: #fbeaea;
+  color: var(--color-error);
+}
+
+.journal-entry-form__type-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 260px;
+}
+
+.journal-entry-form__hint {
+  color: #666;
+  font-style: italic;
+}
+
+.journal-entry-form__error {
+  color: var(--color-error);
+}
+
+.journal-entry-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.journal-entry-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.journal-entry-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.journal-entry-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}

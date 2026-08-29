@@ -5,6 +5,7 @@ import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { HealthStatus } from "../features/health/HealthStatus";
+import { JournalEntriesPage } from "../features/journalEntries/JournalEntriesPage";
 import { OwnersPage } from "../features/owners/OwnersPage";
 import { PropertiesPage } from "../features/properties/PropertiesPage";
 import { TenantsPage } from "../features/tenants/TenantsPage";
@@ -27,6 +28,7 @@ export function AppRoutes() {
         <Route path="/units" element={<ProtectedRoute><UnitsPage /></ProtectedRoute>} />
         <Route path="/owners" element={<ProtectedRoute><OwnersPage /></ProtectedRoute>} />
         <Route path="/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
+        <Route path="/journal-entries" element={<ProtectedRoute><JournalEntriesPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={

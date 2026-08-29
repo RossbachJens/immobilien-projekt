@@ -46,6 +46,31 @@
   serverseitig über Postgres' `pgp_sym_encrypt`/`pgp_sym_decrypt` (pgcrypto), der
   Schlüssel geht nur als Bind-Parameter über die DB-Verbindung. `iban_last4`
   wird zusätzlich im Klartext gepflegt (Anzeige ohne Entschlüsselung nötig).
+- **Kontenrahmen (SKR 04) - global + liegenschaftseigen:** `accounts.property_id`
+  ist nullable: `NULL` = globales SKR04-Basiskonto (nur per Alembic-Migration/
+  Seed-Daten gepflegt, für alle Liegenschaften sichtbar), gesetzt =
+  liegenschaftseigenes Individualkonto (per `POST`/`PATCH /accounts` von
+  Admin/zugeordnetem Verwalter pflegbar, 4-stellig nach SKR04-Schema). Statt
+  einer globalen `UNIQUE(account_number)` gelten zwei partielle Unique-Indizes
+  (`uq_accounts_number_global`, `uq_accounts_number_per_property`) - zwei
+  Liegenschaften können dieselbe Nummer unabhängig voneinander vergeben.
+  Deaktivierung statt Hard-Delete (`is_active`), da Individualkonten bereits
+  in `entry_lines` referenziert sein können. `GET /accounts?property_id=X`
+  liefert global + eigene zusammen (Basis für das Buchungsformular).
+- **Manuelle Buchungen sind ausschließlich liegenschaftsbezogen:** `entry_lines.
+  unit_id` wird beim manuellen Erfassen bewusst NICHT gesetzt - die Aufteilung
+  auf Einheiten erfolgt erst in Phase 5 über den Umlageschlüssel im Rahmen der
+  Nebenkostenabrechnung. `unit_id` bleibt im Schema für automatisierte
+  Buchungen reserviert (z.B. Mietsollstellung, `03_procedures.sql`).
+- **Reale Bankkonten je Liegenschaft (Phase 6):** Trennungsgebot § 27 Abs. 5 WEG -
+  jede Liegenschaft braucht mindestens ein Girokonto und mindestens ein
+  Rücklagenkonto, real mit eigener IBAN. Eine Liegenschaft kann mehrere
+  Rücklagenkonten gleichzeitig haben (z.B. Tagesgeld, Kündigungsgeld, Sparbrief -
+  vgl. Konten 1810/1820/1830 in 04_testdata.sql). Neue Tabelle
+  `property_bank_accounts`: property_id (FK, Pflicht), account_id (FK zu
+  accounts, SKR04-Kategorie), account_purpose, bank_name, iban_encrypted (wie
+  bei owners/tenants via pgcrypto), iban_last4, ggf. creditor_id für SEPA.
+  1:n-Beziehung Liegenschaft -> Bankkonten.
 
 ## Architektur
 ```
@@ -58,6 +83,20 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
   angelegt werden:
   `docker compose exec backend python -m app.cli create-admin --name "Admin"
   --email admin@example.com --password "StartPasswort123!"`.
+- **SQLAlchemy-Enum-Spalten und Postgres-ENUMs:** `Enum(PyEnum, name=...)`
+  persistiert standardmäßig den Python-Member-**Namen** (z.B. `aktiv`), nicht
+  den **Wert** (`AKTIV`). Weicht der Name vom Wert ab (wie bei `AccountType`,
+  `EntryDirection`, `PropertyRole`), muss `values_callable=lambda e: [x.value
+  for x in e]` gesetzt werden - sonst schlägt der INSERT mit
+  `invalid input value for enum ...` fehl, obwohl das Postgres-ENUM selbst
+  korrekt definiert ist. Betrifft nur Enums, deren Name ≠ Wert ist
+  (`LeaseStatus` z.B. ist unkritisch, dort sind beide identisch).
+- **Alembic-Migrationen nach `alembic stamp head` nicht vergessen
+  auszuführen:** Ein neues Modellfeld im ORM (`app/models/...`) ist erst nach
+  `docker compose exec backend alembic upgrade head` tatsächlich in der DB
+  vorhanden - vorher wirft jeder Zugriff `UndefinedColumn`, obwohl Code und
+  Migration bereits im Repo liegen.
+
 
 ## Arbeitsweise ab jetzt (lernorientiert)
 - Änderungen werden erklärt (was/warum/Alternativen), bevor der Code kommt.
@@ -96,13 +135,13 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - **Phase 6:** Gültige Pain.008-Datei für einen Lastschriftlauf.
 - **Phase 7:** Vor Produktivbetrieb abgeschlossen.
 
-## Status
+
 ## Status
 - [x] Datenbankschema (`01_schema.sql`) inkl. DSGVO-Maßnahmen
 - [x] Phase 0 — Setup
 - [ ] Phase 1 — Auth & Access Control *(Login, JWT, Nutzerverwaltung inkl. Rollenzuweisung ✅; RLS-Policies & `access_log`-Middleware offen)*
 - [ ] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung ✅; Frontend für Units/Owners/Tenants offen)*
-- [ ] Phase 3 — Buchhaltung
+- [x] Phase 3 — Buchhaltung *(Kontenrahmen global + liegenschaftseigen, Journal-Erfassung mit Soll=Haben-Trigger, Storno-Flow, Frontend inkl. Kontenverwaltung je Liegenschaft ✅)*
 - [ ] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung
 - [ ] Phase 5 — Nebenkostenabrechnung
 - [ ] Phase 6 — Mietsollstellung & SEPA

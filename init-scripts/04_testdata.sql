@@ -39,7 +39,7 @@ INSERT INTO owners (first_name, last_name, email, street_and_number, postal_code
                      bank_name, iban_last4, sepa_mandate_reference, sepa_granted_at)
 VALUES ('Maximilian', 'Müller', 'mueller@example.com', 'Hauptstraße 12a', '10115', 'Berlin',
         'Berliner Sparkasse', '5678', 'MANDAT-OWN-MUELLER-001', '2024-01-15');
-INSERT INTO unit_owner_history (unit_id, owner_id, valid_from, valid_to) VALUES (1, 1, '2024-01-01', NULL);
+--INSERT INTO unit_owner_history (unit_id, owner_id, valid_from, valid_to) VALUES (1, 1, '2024-01-01', NULL);
 
 -- 5. Mieter (setzt die neue email-Spalte voraus, siehe oben)
 INSERT INTO tenants (first_name, last_name, email, street_and_number, postal_code, city,

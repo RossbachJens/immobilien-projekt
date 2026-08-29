@@ -1,7 +1,7 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, Text,func
+from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -23,11 +23,28 @@ class Account(Base):
     __tablename__ = "accounts"
 
     account_id: Mapped[int] = mapped_column(primary_key=True)
-    account_number: Mapped[str] = mapped_column(unique=True)
+    # KEIN unique=True mehr - ersetzt durch zwei partielle Unique-Indizes
+    # (uq_accounts_number_global / uq_accounts_number_per_property, siehe
+    # Migration 0001_property_accounts) - im ORM nicht abbildbar, gleiches
+    # Muster wie bei UnitAllocationKey/BudgetPlan.
+    account_number: Mapped[str]
     account_name: Mapped[str]
     account_class: Mapped[str]
-    type: Mapped[AccountType] = mapped_column(Enum(AccountType, name="account_type"))
+    type: Mapped[AccountType] = mapped_column(
+        Enum(
+            AccountType,
+            name="account_type",
+            # SQLAlchemy persistiert bei PEP-435-Enums standardmäßig den
+            # Member-NAMEN (z.B. "aktiv", klein) statt des WERTS ("AKTIV") -
+            # das Postgres-ENUM account_type (01_schema.sql) kennt aber nur
+            # die Großschreibung. values_callable erzwingt .value statt .name.
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        )
+    )
     is_active: Mapped[bool]
+    # NULL = globales SKR04-Basiskonto. Gesetzt = liegenschaftseigenes
+    # Individualkonto, gepflegt über POST/PATCH /accounts.
+    property_id: Mapped[int | None] = mapped_column(ForeignKey("properties.property_id"))
 
 
 class JournalEntry(Base):
@@ -64,6 +81,10 @@ class EntryLine(Base):
     lease_id: Mapped[int | None] = mapped_column(ForeignKey("leases.lease_id"))
     amount: Mapped[float] = mapped_column(Numeric(12, 2))
     direction: Mapped[EntryDirection] = mapped_column(
-        Enum(EntryDirection, name="entry_direction")
+        Enum(
+            EntryDirection,
+            name="entry_direction",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        )
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

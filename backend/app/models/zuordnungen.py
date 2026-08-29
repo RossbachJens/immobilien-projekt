@@ -38,7 +38,13 @@ class UserProperty(Base):
     property_id: Mapped[int] = mapped_column(
         ForeignKey("properties.property_id"), primary_key=True
     )
-    role: Mapped[PropertyRole] = mapped_column(Enum(PropertyRole, name="property_role"))
+    role: Mapped[PropertyRole] = mapped_column(
+        Enum(
+            PropertyRole,
+            name="property_role",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        )
+    )
     granted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
