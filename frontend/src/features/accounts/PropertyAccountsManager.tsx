@@ -29,7 +29,7 @@ export function PropertyAccountsManager({ propertyId }: PropertyAccountsManagerP
   const [accountName, setAccountName] = useState("");
   const [type, setType] = useState<AccountType>("AUFWAND");
   const [error, setError] = useState<string | null>(null);
-
+  const [isReserveAccount, setIsReserveAccount] = useState(false);
   // Die Abfrage liefert global + eigene zusammen (für das Buchungsformular
   // gedacht) - hier interessieren nur die eigenen Konten dieser Liegenschaft.
   const ownAccounts = (accounts ?? []).filter((a) => a.property_id === propertyId);
@@ -54,6 +54,31 @@ export function PropertyAccountsManager({ propertyId }: PropertyAccountsManagerP
 
   function toggleActive(accountId: number, currentlyActive: boolean) {
     updateMutation.mutate({ accountId, payload: { is_active: !currentlyActive } });
+  }
+
+    function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    createMutation.mutate(
+      {
+        property_id: propertyId,
+        account_number: accountNumber,
+        account_name: accountName,
+        type,
+        is_reserve_account: isReserveAccount,
+      },
+      {
+        onSuccess: () => {
+          setShowForm(false);
+          setAccountNumber("");
+          setAccountName("");
+          setType("AUFWAND");
+          setIsReserveAccount(false);
+        },
+        onError: () =>
+          setError("Konto konnte nicht angelegt werden - Nummer eventuell schon vergeben."),
+      },
+    );
   }
 
   return (
@@ -94,6 +119,11 @@ export function PropertyAccountsManager({ propertyId }: PropertyAccountsManagerP
 
       {showForm && (
         <form onSubmit={handleCreate} className="property-accounts-manager__form">
+          {/* im <form>, vor den form-actions ergänzen */}
+          <label className="property-accounts-manager__checkbox">
+            <input type="checkbox" checked={isReserveAccount} onChange={(e) => setIsReserveAccount(e.target.checked)} />
+            Rücklagenkonto (z.B. Instandhaltungsrücklage)
+          </label>
           <label>
             Kontonummer (4-stellig, SKR04) *
             <input

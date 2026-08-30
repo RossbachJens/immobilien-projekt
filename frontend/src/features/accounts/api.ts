@@ -11,7 +11,9 @@ export interface Account {
   type: AccountType;
   is_active: boolean;
   property_id: number | null;
+  is_reserve_account: boolean;
 }
+
 
 export interface ListAccountsParams {
   property_id?: number;
@@ -29,12 +31,14 @@ export interface AccountCreatePayload {
   account_number: string;
   account_name: string;
   type: AccountType;
+  is_reserve_account?: boolean;
 }
 
 export interface AccountUpdatePayload {
   account_name?: string;
   type?: AccountType;
   is_active?: boolean;
+  is_reserve_account?: boolean;
 }
 
 export async function createAccount(payload: AccountCreatePayload): Promise<Account> {

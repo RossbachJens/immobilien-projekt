@@ -31,11 +31,12 @@ export function useCreateBudgetPlan(propertyId: number) {
   });
 }
 
-export function useUpdateBudgetPlanStatus(propertyId: number) {
+// frontend/src/features/budgetPlans/useBudgetPlans.ts — useUpdateBudgetPlanStatus ersetzen
+export function useUpdateBudgetPlan(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ budgetId, status }: { budgetId: number; status: BudgetPlanStatus }) =>
-      updateBudgetPlanStatus(budgetId, status),
+    mutationFn: ({ budgetId, payload }: { budgetId: number; payload: BudgetPlanStatusPayload }) =>
+      updateBudgetPlan(budgetId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: plansKey(propertyId) }),
   });
 }

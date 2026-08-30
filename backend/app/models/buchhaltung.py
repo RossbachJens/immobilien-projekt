@@ -1,7 +1,8 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, Text, func
+# backend/app/models/buchhaltung.py — Import-Zeile ersetzen
+from sqlalchemy import Boolean, CheckConstraint, Enum, ForeignKey, Numeric, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -41,7 +42,10 @@ class Account(Base):
             values_callable=lambda enum_cls: [e.value for e in enum_cls],
         )
     )
+    # backend/app/models/buchhaltung.py — Account.is_active-Zeile ergänzen
     is_active: Mapped[bool]
+    is_reserve_account: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    
     # NULL = globales SKR04-Basiskonto. Gesetzt = liegenschaftseigenes
     # Individualkonto, gepflegt über POST/PATCH /accounts.
     property_id: Mapped[int | None] = mapped_column(ForeignKey("properties.property_id"))

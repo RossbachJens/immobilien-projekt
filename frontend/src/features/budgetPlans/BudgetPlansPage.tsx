@@ -1,10 +1,11 @@
-// frontend/src/features/budgetPlans/BudgetPlansPage.tsx
+// frontend/src/features/budgetPlans/BudgetPlansPage.tsx — vollständig ersetzen
 import { useState } from "react";
 
 import { Card } from "../../components/Card";
 import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
 import { useProperties } from "../properties/useProperties";
+import { useResolutions } from "../resolutions/useResolutions";
 import { useUnits } from "../units/useUnits";
 import type { BudgetPlanPayload, BudgetPlanStatus, BudgetPositionPayload } from "./api";
 import { BudgetPlanForm } from "./BudgetPlanForm";
@@ -14,7 +15,7 @@ import {
   useBudgetPositions,
   useCreateBudgetPlan,
   useCreateBudgetPosition,
-  useUpdateBudgetPlanStatus,
+  useUpdateBudgetPlan,
 } from "./useBudgetPlans";
 import "./BudgetPlansPage.css";
 
@@ -35,13 +36,17 @@ export function BudgetPlansPage() {
   const { data: plans, isLoading: plansLoading } = useBudgetPlans(selectedPropertyId);
   const { data: accounts } = useAccounts({ property_id: selectedPropertyId });
   const { data: units } = useUnits(selectedPropertyId);
+  const { data: resolutions } = useResolutions(selectedPropertyId);
 
   const createPlanMutation = useCreateBudgetPlan(selectedPropertyId ?? -1);
-  const updateStatusMutation = useUpdateBudgetPlanStatus(selectedPropertyId ?? -1);
+  const updatePlanMutation = useUpdateBudgetPlan(selectedPropertyId ?? -1);
 
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [planFormError, setPlanFormError] = useState<string | null>(null);
   const [expandedPlanId, setExpandedPlanId] = useState<number | null>(null);
+  // budget_id, für das gerade ein Beschluss ausgewählt wird, um es zu beschließen
+  const [approvingPlanId, setApprovingPlanId] = useState<number | null>(null);
+  const [approveResolutionId, setApproveResolutionId] = useState<number | "">("");
 
   function handleCreatePlan(payload: BudgetPlanPayload) {
     setPlanFormError(null);
@@ -50,6 +55,30 @@ export function BudgetPlansPage() {
       onError: () =>
         setPlanFormError("Wirtschaftsplan konnte nicht angelegt werden - Jahr eventuell schon vergeben."),
     });
+  }
+
+  function handleStatusChange(budgetId: number, currentStatus: BudgetPlanStatus, next: BudgetPlanStatus, hasResolution: boolean) {
+    if (next === "Beschlossen" && !hasResolution) {
+      setApprovingPlanId(budgetId);
+      setApproveResolutionId("");
+      return;
+    }
+    if (next === "Inaktiv" && !window.confirm("Wirtschaftsplan wirklich auf 'Inaktiv' setzen?")) return;
+    updatePlanMutation.mutate({ budgetId, payload: { status: next } });
+  }
+
+  function confirmApproval(budgetId: number) {
+    if (approveResolutionId === "") return;
+    updatePlanMutation.mutate(
+      { budgetId, payload: { status: "Beschlossen", resolution_id: approveResolutionId } },
+      { onSuccess: () => setApprovingPlanId(null) },
+    );
+  }
+
+  function resolutionLabel(resolutionId: number | null): string | null {
+    if (resolutionId == null) return null;
+    const r = resolutions?.find((x) => x.resolution_id === resolutionId);
+    return r ? `Lfd. Nr. ${r.lfd_nr} – ${r.title}` : `Beschluss #${resolutionId}`;
   }
 
   function unitLabel(unitId: number): string {
@@ -70,6 +99,7 @@ export function BudgetPlansPage() {
               setPropertyId(e.target.value ? Number(e.target.value) : "");
               setExpandedPlanId(null);
               setCreatingPlan(false);
+              setApprovingPlanId(null);
             }}
           >
             <option value="">– bitte wählen –</option>
@@ -105,6 +135,11 @@ export function BudgetPlansPage() {
                     <span className={`budget-plans-page__status budget-plans-page__status--${plan.status}`}>
                       {plan.status}
                     </span>
+                    {resolutionLabel(plan.resolution_id) && (
+                      <div className="budget-plans-page__resolution">
+                        Beschluss: {resolutionLabel(plan.resolution_id)}
+                      </div>
+                    )}
                   </div>
                   <div className="budget-plans-page__plan-actions">
                     <button
@@ -117,20 +152,50 @@ export function BudgetPlansPage() {
                       <button
                         key={next}
                         type="button"
-                        onClick={() => {
-                          if (
-                            next === "Inaktiv" &&
-                            !window.confirm(`Wirtschaftsplan ${plan.fiscal_year} wirklich auf "Inaktiv" setzen?`)
-                          )
-                            return;
-                          updateStatusMutation.mutate({ budgetId: plan.budget_id, status: next });
-                        }}
+                        onClick={() => handleStatusChange(plan.budget_id, plan.status, next, plan.resolution_id != null)}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {approvingPlanId === plan.budget_id && (
+                  <div className="budget-plans-page__approve">
+                    <label>
+                      Beschluss zuordnen, um zu beschließen
+                      <select
+                        value={approveResolutionId}
+                        onChange={(e) => setApproveResolutionId(e.target.value ? Number(e.target.value) : "")}
+                      >
+                        <option value="">– bitte wählen –</option>
+                        {resolutions?.map((r) => (
+                          <option key={r.resolution_id} value={r.resolution_id}>
+                            Lfd. Nr. {r.lfd_nr} – {r.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="budget-plans-page__approve-actions">
+                      <button
+                        type="button"
+                        disabled={approveResolutionId === "" || updatePlanMutation.isPending}
+                        onClick={() => confirmApproval(plan.budget_id)}
+                      >
+                        Beschließen
+                      </button>
+                      <button type="button" onClick={() => setApprovingPlanId(null)}>
+                        Abbrechen
+                      </button>
+                    </div>
+                    {(!resolutions || resolutions.length === 0) && (
+                      <p className="budget-plans-page__approve-hint">
+                        Noch keine Beschlüsse für diese Liegenschaft erfasst - zuerst in der
+                        Beschluss-Sammlung anlegen.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {expandedPlanId === plan.budget_id && (
                   <BudgetPlanPositions
@@ -208,9 +273,10 @@ function BudgetPlanPositions({
       {positions?.map((position) => (
         <details key={position.position_id} className="budget-plan-positions__position">
           <summary>
-            {accountLabelFor(position.account_id)} · {position.planned_amount.toFixed(2)} € ·{" "}
-            {position.allocation_key_type}
+            {position.description ?? accountLabelFor(position.account_id)} ·{" "}
+            {position.planned_amount.toFixed(2)} € · {position.allocation_key_type}
           </summary>
+          <p className="budget-plan-positions__account">Konto: {accountLabelFor(position.account_id)}</p>
           <table className="budget-plan-positions__shares-table">
             <thead>
               <tr>

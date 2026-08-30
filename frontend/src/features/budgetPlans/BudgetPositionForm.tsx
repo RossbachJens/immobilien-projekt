@@ -1,7 +1,8 @@
-// frontend/src/features/budgetPlans/BudgetPositionForm.tsx
+// frontend/src/features/budgetPlans/BudgetPositionForm.tsx — vollständig ersetzen
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { AllocationKeyField } from "../../components/AllocationKeyField";
 import { accountLabel, accountLabelShort } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
 
@@ -16,8 +17,6 @@ interface BudgetPositionFormProps {
   error?: string | null;
 }
 
-const STANDARD_KEYS = ["MEA", "Wohnflaeche"] as const;
-
 export function BudgetPositionForm({
   propertyId,
   onSubmit,
@@ -25,19 +24,21 @@ export function BudgetPositionForm({
   isSubmitting,
   error,
 }: BudgetPositionFormProps) {
-  // Wirtschaftsplan-Positionen sind Kostenpositionen - bewusst auf
-  // Aufwandskonten eingegrenzt (anders als bei Buchungen, wo jede Kontoart
-  // vorkommen kann).
+  // Ohne type-Filter laden, da Positionen sowohl Aufwandskonten als auch
+  // (Liegenschaftseigene) Rücklagenkonten referenzieren dürfen - Trennung
+  // erfolgt unten über optgroups.
   const { data: accounts, isLoading: accountsLoading } = useAccounts({
     property_id: propertyId,
     is_active: true,
-    type: "AUFWAND",
   });
+  const expenseAccounts = (accounts ?? []).filter((a) => a.type === "AUFWAND");
+  const reserveAccounts = (accounts ?? []).filter((a) => a.is_reserve_account && a.type !== "AUFWAND");
 
   const [accountId, setAccountId] = useState<number | "">("");
+  const [description, setDescription] = useState("");
   const [plannedAmount, setPlannedAmount] = useState("");
   const [keyMode, setKeyMode] = useState<"standard" | "custom">("standard");
-  const [allocationKey, setAllocationKey] = useState<string>("MEA");
+  const [standardKey, setStandardKey] = useState("MEA");
   const [customKey, setCustomKey] = useState("");
 
   function handleSubmit(event: FormEvent) {
@@ -45,8 +46,9 @@ export function BudgetPositionForm({
     if (accountId === "") return;
     onSubmit({
       account_id: accountId,
+      description: description || null,
       planned_amount: Number(plannedAmount),
-      allocation_key_type: keyMode === "standard" ? allocationKey : customKey,
+      allocation_key_type: keyMode === "standard" ? standardKey : customKey,
     });
   }
 
@@ -54,19 +56,40 @@ export function BudgetPositionForm({
     <form onSubmit={handleSubmit} className="budget-position-form">
       {accountsLoading && <p className="budget-position-form__hint">Konten werden geladen…</p>}
       <label>
-        Aufwandskonto *
+        Konto *
         <select
           value={accountId}
           onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : "")}
           required
         >
           <option value="">– Konto wählen –</option>
-          {accounts?.map((a) => (
-            <option key={a.account_id} value={a.account_id} title={accountLabel(a)}>
-              {accountLabelShort(a)}
-            </option>
-          ))}
+          {expenseAccounts.length > 0 && (
+            <optgroup label="Aufwandskonten">
+              {expenseAccounts.map((a) => (
+                <option key={a.account_id} value={a.account_id} title={accountLabel(a)}>
+                  {accountLabelShort(a)}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {reserveAccounts.length > 0 && (
+            <optgroup label="Rücklagenkonten">
+              {reserveAccounts.map((a) => (
+                <option key={a.account_id} value={a.account_id} title={accountLabel(a)}>
+                  {accountLabelShort(a)}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
+      </label>
+      <label>
+        Bezeichnung
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="z.B. Hausmeister, Haftpflichtversicherung, Gebäudeversicherung"
+        />
       </label>
       <label>
         Geplanter Jahresbetrag (€) *
@@ -80,34 +103,14 @@ export function BudgetPositionForm({
         />
       </label>
 
-      <fieldset className="budget-position-form__key">
-        <legend>Verteilerschlüssel</legend>
-        <label className="budget-position-form__radio">
-          <input type="radio" checked={keyMode === "standard"} onChange={() => setKeyMode("standard")} />
-          Standard
-        </label>
-        {keyMode === "standard" && (
-          <select value={allocationKey} onChange={(e) => setAllocationKey(e.target.value)}>
-            {STANDARD_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {k === "MEA" ? "Miteigentumsanteile (MEA)" : "Wohnfläche"}
-              </option>
-            ))}
-          </select>
-        )}
-        <label className="budget-position-form__radio">
-          <input type="radio" checked={keyMode === "custom"} onChange={() => setKeyMode("custom")} />
-          Individueller Umlageschlüssel
-        </label>
-        {keyMode === "custom" && (
-          <input
-            value={customKey}
-            onChange={(e) => setCustomKey(e.target.value)}
-            placeholder="genauer key_type, z.B. Heizkosten_Verbrauch"
-            required
-          />
-        )}
-      </fieldset>
+      <AllocationKeyField
+        mode={keyMode}
+        onModeChange={setKeyMode}
+        standardKey={standardKey}
+        onStandardKeyChange={setStandardKey}
+        customKey={customKey}
+        onCustomKeyChange={setCustomKey}
+      />
 
       {error && <p className="budget-position-form__error">{error}</p>}
       <div className="budget-position-form__actions">

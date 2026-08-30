@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, Text, UniqueConstraint, func
+# backend/app/models/wirtschaftsplan.py — Import-Zeile ersetzen
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -71,12 +72,10 @@ class ResolutionCollection(Base):
     deleted_at: Mapped[datetime | None]
 
 
+# backend/app/models/wirtschaftsplan.py — BudgetPlan ergänzen (resolution_id)
 class BudgetPlan(Base):
     __tablename__ = "budget_plans"
     __table_args__ = (
-        # Entspricht dem partiellen Unique-Index uq_budget_plans_property_year
-        # in 01_schema.sql (WHERE deleted_at IS NULL) — die Bedingung selbst
-        # kann im ORM-Constraint nicht abgebildet werden, siehe SQL-Datei.
         UniqueConstraint("property_id", "fiscal_year", name="uq_budget_plans_property_year_orm"),
     )
 
@@ -85,10 +84,14 @@ class BudgetPlan(Base):
     fiscal_year: Mapped[int]
     title: Mapped[str]
     status: Mapped[str] = mapped_column(default="Entwurf")
+    # Ein Wirtschaftsplan wird erst durch Beschluss der Eigentümerversammlung
+    # bindend - siehe Router-Logik (Statuswechsel zu "Beschlossen" erzwingt
+    # resolution_id).
+    resolution_id: Mapped[int | None] = mapped_column(ForeignKey("resolution_collection.resolution_id"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
 
-
+# backend/app/models/wirtschaftsplan.py — BudgetPosition ergänzen (description)
 class BudgetPosition(Base):
     __tablename__ = "budget_positions"
     __table_args__ = (CheckConstraint("planned_amount >= 0"),)
@@ -96,6 +99,10 @@ class BudgetPosition(Base):
     position_id: Mapped[int] = mapped_column(primary_key=True)
     budget_id: Mapped[int] = mapped_column(ForeignKey("budget_plans.budget_id"))
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.account_id"))
+    # Freitext-Label, z.B. "Hausmeister"/"Haftpflichtversicherung" -
+    # unterscheidet Positionen, die auf dasselbe generische Konto gebucht
+    # werden (z.B. mehrere Versicherungsarten auf einem Konto "Versicherungen").
+    description: Mapped[str | None] = mapped_column(String(150))
     planned_amount: Mapped[float] = mapped_column(Numeric(12, 2))
     allocation_key_type: Mapped[str]
 

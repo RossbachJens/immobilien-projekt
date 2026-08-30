@@ -1,4 +1,4 @@
-// frontend/src/features/budgetPlans/api.ts
+// frontend/src/features/budgetPlans/api.ts — vollständig ersetzen
 import { apiClient } from "../../api/client";
 
 export type BudgetPlanStatus = "Entwurf" | "Beschlossen" | "Inaktiv";
@@ -9,6 +9,7 @@ export interface BudgetPlan {
   fiscal_year: number;
   title: string;
   status: BudgetPlanStatus;
+  resolution_id: number | null;
   created_at: string;
 }
 
@@ -16,6 +17,12 @@ export interface BudgetPlanPayload {
   property_id: number;
   fiscal_year: number;
   title: string;
+  resolution_id?: number | null;
+}
+
+export interface BudgetPlanStatusPayload {
+  status: BudgetPlanStatus;
+  resolution_id?: number | null;
 }
 
 export interface UnitBudgetShare {
@@ -30,6 +37,7 @@ export interface BudgetPosition {
   position_id: number;
   budget_id: number;
   account_id: number;
+  description: string | null;
   planned_amount: number;
   allocation_key_type: string;
   unit_shares: UnitBudgetShare[];
@@ -37,6 +45,7 @@ export interface BudgetPosition {
 
 export interface BudgetPositionPayload {
   account_id: number;
+  description?: string | null;
   planned_amount: number;
   allocation_key_type: string;
 }
@@ -53,8 +62,8 @@ export async function createBudgetPlan(payload: BudgetPlanPayload): Promise<Budg
   return data;
 }
 
-export async function updateBudgetPlanStatus(budgetId: number, status: BudgetPlanStatus): Promise<BudgetPlan> {
-  const { data } = await apiClient.patch<BudgetPlan>(`/budget-plans/${budgetId}`, { status });
+export async function updateBudgetPlan(budgetId: number, payload: BudgetPlanStatusPayload): Promise<BudgetPlan> {
+  const { data } = await apiClient.patch<BudgetPlan>(`/budget-plans/${budgetId}`, payload);
   return data;
 }
 

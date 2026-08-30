@@ -1,17 +1,17 @@
 # backend/app/routers/budget_plans.py
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access import accessible_property_ids
+from app.core.allocation import distribute_amount
 from app.core.deps import get_current_user
 from app.core.roles import resolve_role
 from app.db.session import get_db
-from app.models.buchhaltung import Account
-from app.models.stammdaten import Property, Unit, User
-from app.models.wirtschaftsplan import BudgetPlan, BudgetPosition, UnitBudgetShare
-from app.models.zuordnungen import UnitAllocationKey
+from app.models.buchhaltung import Account, AccountType
+from app.models.stammdaten import Property, User
+from app.models.wirtschaftsplan import BudgetPlan, BudgetPosition, ResolutionCollection, UnitBudgetShare
 from app.schemas.budget_plans import (
     BudgetPlanCreate,
     BudgetPlanOut,
@@ -23,7 +23,6 @@ from app.schemas.budget_plans import (
 
 router = APIRouter(prefix="/budget-plans", tags=["budget-plans"])
 
-# Erlaubte Statuswechsel - keine Rückwärtsbewegung, "Inaktiv" ist Endzustand.
 ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "Entwurf": {"Beschlossen", "Inaktiv"},
     "Beschlossen": {"Inaktiv"},
@@ -61,85 +60,14 @@ def _get_readable_plan(db: Session, budget_id: int, current_user: User) -> Budge
     return plan
 
 
-def _compute_unit_fractions(
-    db: Session, property_: Property, allocation_key_type: str, fiscal_year: int
-) -> dict[int, float]:
-    """
-    Anteil (0..1) je Einheit an einer zu verteilenden Position:
-      - 'MEA'         -> unit.mea / property.total_mea
-      - 'Wohnflaeche' -> unit.square_meters / Summe aller aktiven Einheiten
-      - sonst         -> Suche in unit_allocation_keys nach diesem key_type,
-                         gültig für fiscal_year (Gültigkeitszeitraum statt
-                         Jahres-Einzelzeile, siehe PROJECTPLAN.md); Einheiten
-                         ohne passenden Eintrag bekommen 0.
-    """
-    units = list(
-        db.scalars(
-            select(Unit).where(Unit.property_id == property_.property_id, Unit.deleted_at.is_(None))
-        )
-    )
-    if not units:
-        return {}
-
-    if allocation_key_type == "MEA":
-        if not property_.total_mea:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Liegenschaft hat kein total_mea hinterlegt - Verteilung nach MEA nicht möglich.",
-            )
-        return {u.unit_id: float(u.mea or 0) / float(property_.total_mea) for u in units}
-
-    if allocation_key_type == "Wohnflaeche":
-        total_sqm = sum(float(u.square_meters) for u in units)
-        if total_sqm == 0:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Keine Wohnfläche hinterlegt.")
-        return {u.unit_id: float(u.square_meters) / total_sqm for u in units}
-
-    keys = list(
-        db.scalars(
-            select(UnitAllocationKey).where(
-                UnitAllocationKey.property_id == property_.property_id,
-                UnitAllocationKey.key_type == allocation_key_type,
-                UnitAllocationKey.valid_from_year <= fiscal_year,
-                or_(
-                    UnitAllocationKey.valid_to_year.is_(None),
-                    UnitAllocationKey.valid_to_year >= fiscal_year,
-                ),
-            )
-        )
-    )
-    if not keys:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"Kein Umlageschlüssel '{allocation_key_type}' für {fiscal_year} in dieser Liegenschaft hinterlegt.",
-        )
-    return {k.unit_id: float(k.numerator_value) / float(k.denominator_value) for k in keys}
-
-
-def _distribute_position(
-    db: Session, property_: Property, planned_amount: float, allocation_key_type: str, fiscal_year: int
-) -> list[tuple[int, float]]:
-    """
-    Liefert je Einheit den zugewiesenen Betrag - Summe entspricht exakt
-    planned_amount. Eine Rundungsdifferenz (durch die 2-Nachkommastellen-
-    Rundung je Einheit) geht an die Einheit mit dem größten Anteil, analog
-    zum Soll=Haben-Prinzip bei Buchungen (02_triggers.sql).
-    """
-    fractions = _compute_unit_fractions(db, property_, allocation_key_type, fiscal_year)
-    participating = {uid: f for uid, f in fractions.items() if f > 0}
-    if not participating:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Keine Einheit hat einen Anteil > 0 für diesen Verteilerschlüssel.",
-        )
-
-    allocated = {uid: round(planned_amount * f, 2) for uid, f in participating.items()}
-    diff = round(planned_amount - sum(allocated.values()), 2)
-    if diff != 0:
-        target_uid = max(participating, key=lambda uid: participating[uid])
-        allocated[target_uid] = round(allocated[target_uid] + diff, 2)
-
-    return list(allocated.items())
+def _validate_resolution(db: Session, resolution_id: int, property_id: int) -> None:
+    resolution = db.get(ResolutionCollection, resolution_id)
+    if (
+        resolution is None
+        or resolution.deleted_at is not None
+        or resolution.property_id != property_id
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannter Beschluss für diese Liegenschaft.")
 
 
 @router.get("", response_model=list[BudgetPlanOut])
@@ -168,6 +96,9 @@ def create_budget_plan(
 ) -> BudgetPlan:
     _require_write_role(current_user)
     _check_property_accessible(db, payload.property_id, current_user)
+
+    if payload.resolution_id is not None:
+        _validate_resolution(db, payload.resolution_id, payload.property_id)
 
     plan = BudgetPlan(**payload.model_dump())
     db.add(plan)
@@ -202,6 +133,18 @@ def update_budget_plan_status(
             f"Statuswechsel von '{plan.status}' zu '{payload.status}' nicht erlaubt.",
         )
 
+    if payload.resolution_id is not None:
+        _validate_resolution(db, payload.resolution_id, plan.property_id)
+        plan.resolution_id = payload.resolution_id
+
+    effective_resolution_id = payload.resolution_id if payload.resolution_id is not None else plan.resolution_id
+    if payload.status == "Beschlossen" and effective_resolution_id is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Ein Wirtschaftsplan kann erst nach Zuordnung eines Beschlusses aus der "
+            "Beschluss-Sammlung beschlossen werden.",
+        )
+
     plan.status = payload.status
     db.commit()
     db.refresh(plan)
@@ -234,6 +177,7 @@ def list_budget_positions(
             position_id=p.position_id,
             budget_id=p.budget_id,
             account_id=p.account_id,
+            description=p.description,
             planned_amount=p.planned_amount,
             allocation_key_type=p.allocation_key_type,
             unit_shares=[
@@ -267,15 +211,22 @@ def create_budget_position(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekanntes oder inaktives Konto")
     if account.property_id is not None and account.property_id != plan.property_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Konto gehört zu einer anderen Liegenschaft")
+    if account.type != AccountType.aufwand and not account.is_reserve_account:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Nur Aufwandskonten oder als Rücklage gekennzeichnete Konten sind für "
+            "Wirtschaftsplan-Positionen zulässig.",
+        )
 
     property_ = db.get(Property, plan.property_id)
-    unit_amounts = _distribute_position(
+    unit_amounts = distribute_amount(
         db, property_, payload.planned_amount, payload.allocation_key_type, plan.fiscal_year
     )
 
     position = BudgetPosition(
         budget_id=plan.budget_id,
         account_id=payload.account_id,
+        description=payload.description,
         planned_amount=payload.planned_amount,
         allocation_key_type=payload.allocation_key_type,
     )
@@ -287,9 +238,6 @@ def create_budget_position(
             position_id=position.position_id,
             unit_id=unit_id,
             allocated_planned_amount=amount,
-            # Monatsrate gerundet - Summe der 12 Raten kann durch die
-            # Rundung um wenige Cent vom Jahresbetrag abweichen; für eine
-            # Ratenplanung tolerierbar (keine Buchungsrelevanz).
             monthly_installment=round(amount / 12, 2),
         )
         for unit_id, amount in unit_amounts
@@ -304,6 +252,7 @@ def create_budget_position(
         position_id=position.position_id,
         budget_id=position.budget_id,
         account_id=position.account_id,
+        description=position.description,
         planned_amount=position.planned_amount,
         allocation_key_type=position.allocation_key_type,
         unit_shares=[UnitBudgetShareOut.model_validate(s) for s in shares],

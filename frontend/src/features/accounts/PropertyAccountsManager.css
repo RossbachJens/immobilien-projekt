@@ -110,3 +110,11 @@
   min-width: 0;
   flex: 1;
 }
+
+/* frontend/src/features/accounts/PropertyAccountsManager.css — ergänzen */
+.property-accounts-manager__checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}

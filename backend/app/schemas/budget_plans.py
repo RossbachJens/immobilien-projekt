@@ -1,4 +1,4 @@
-# backend/app/schemas/budget_plans.py
+# backend/app/schemas/budget_plans.py — vollständig ersetzen
 from datetime import datetime
 from typing import Literal
 
@@ -11,10 +11,17 @@ class BudgetPlanCreate(BaseModel):
     property_id: int
     fiscal_year: int = Field(ge=2000, le=2100)
     title: str = Field(min_length=1, max_length=150)
+    # Optional bereits bei Anlage verknüpfbar (z.B. bei einem bereits
+    # vorliegenden Rahmenbeschluss) - im Normalfall wird der Beschluss erst
+    # beim Statuswechsel zu "Beschlossen" zugeordnet.
+    resolution_id: int | None = None
 
 
 class BudgetPlanStatusUpdate(BaseModel):
     status: BudgetPlanStatus
+    # Kann hier mitgegeben werden, um Verknüpfung + Statuswechsel zu
+    # "Beschlossen" in einem Schritt durchzuführen.
+    resolution_id: int | None = None
 
 
 class BudgetPlanOut(BaseModel):
@@ -25,6 +32,7 @@ class BudgetPlanOut(BaseModel):
     fiscal_year: int
     title: str
     status: str
+    resolution_id: int | None
     created_at: datetime
 
 
@@ -40,10 +48,11 @@ class UnitBudgetShareOut(BaseModel):
 
 class BudgetPositionCreate(BaseModel):
     account_id: int
+    # Freitext-Bezeichnung, z.B. "Hausmeister", "Haftpflichtversicherung",
+    # "Gebäudeversicherung" - unterscheidet Positionen, die auf dasselbe
+    # generische Konto gebucht werden.
+    description: str | None = Field(default=None, max_length=150)
     planned_amount: float = Field(ge=0)
-    # z.B. 'MEA', 'Wohnflaeche' oder ein individueller key_type aus
-    # unit_allocation_keys (z.B. 'Heizkosten_Verbrauch') - bewusst kein Enum,
-    # da individuelle Schlüssel je Liegenschaft frei benannt werden können.
     allocation_key_type: str = Field(min_length=1, max_length=50)
 
 
@@ -53,6 +62,7 @@ class BudgetPositionOut(BaseModel):
     position_id: int
     budget_id: int
     account_id: int
+    description: str | None
     planned_amount: float
     allocation_key_type: str
     unit_shares: list[UnitBudgetShareOut] = Field(default_factory=list)

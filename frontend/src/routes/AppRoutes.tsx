@@ -15,7 +15,9 @@ import { MainLayout } from "../layouts/MainLayout";
 import { AdminRoute } from "./AdminRoute";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ResolutionsPage } from "../features/resolutions/ResolutionsPage";
+// frontend/src/routes/AppRoutes.tsx — Imports + Routes ergänzen
 import { BudgetPlansPage } from "../features/budgetPlans/BudgetPlansPage";
+import { SpecialAssessmentsPage } from "../features/specialAssessments/SpecialAssessmentsPage";
 
 export function AppRoutes() {
   return (
@@ -33,6 +35,7 @@ export function AppRoutes() {
         <Route path="/journal-entries" element={<ProtectedRoute><JournalEntriesPage /></ProtectedRoute>} />
         <Route path="/resolutions" element={<ProtectedRoute><ResolutionsPage /></ProtectedRoute>} />
         <Route path="/budget-plans" element={<ProtectedRoute><BudgetPlansPage /></ProtectedRoute>} />
+        <Route path="/special-assessments" element={<ProtectedRoute><SpecialAssessmentsPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={

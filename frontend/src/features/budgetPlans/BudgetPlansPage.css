@@ -138,3 +138,51 @@
   border-radius: 5px;
   cursor: pointer;
 }
+/* frontend/src/features/budgetPlans/BudgetPlansPage.css — ergänzen */
+.budget-plans-page__resolution {
+  font-size: 0.85rem;
+  color: #555;
+  margin-top: 0.2rem;
+}
+
+.budget-plans-page__approve {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  background-color: var(--color-light);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.budget-plans-page__approve label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 360px;
+}
+
+.budget-plans-page__approve select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.budget-plans-page__approve-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.budget-plans-page__approve-hint {
+  color: #777;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.budget-plan-positions__account {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
