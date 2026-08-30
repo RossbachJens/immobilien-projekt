@@ -1,0 +1,140 @@
+/* frontend/src/features/budgetPlans/BudgetPlansPage.css */
+.budget-plans-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.budget-plans-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.budget-plans-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.budget-plans-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.budget-plans-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.budget-plans-page__list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.budget-plans-page__plan {
+  border: 1px solid #eee;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+}
+
+.budget-plans-page__plan-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.budget-plans-page__plan-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.budget-plans-page__plan-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.budget-plans-page__status {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  background-color: var(--color-light);
+  color: #555;
+}
+
+.budget-plans-page__status--Beschlossen {
+  background-color: #e6f4e6;
+  color: var(--color-success);
+}
+
+.budget-plans-page__status--Inaktiv {
+  background-color: #fbeaea;
+  color: var(--color-error);
+}
+
+.budget-plan-positions {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.budget-plan-positions__position summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.budget-plan-positions__shares-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.budget-plan-positions__shares-table th,
+.budget-plan-positions__shares-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.budget-plan-positions__total {
+  font-weight: 700;
+}
+
+.budget-plan-positions__locked {
+  color: #777;
+  font-style: italic;
+}
+
+.budget-plan-positions > button {
+  align-self: flex-start;
+  padding: 0.4rem 0.8rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}

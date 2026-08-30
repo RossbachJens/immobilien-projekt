@@ -71,6 +71,14 @@
   accounts, SKR04-Kategorie), account_purpose, bank_name, iban_encrypted (wie
   bei owners/tenants via pgcrypto), iban_last4, ggf. creditor_id für SEPA.
   1:n-Beziehung Liegenschaft -> Bankkonten.
+- **Beschluss-Sammlung (§ 24 WEG) - append-only:** `resolution_collection`
+  bekommt eine gesetzlich vorgeschriebene `lfd_nr` (fortlaufend je
+  Liegenschaft, nie wiederverwendet - auch nicht nach Soft-Delete-Korrektur).
+  Statusänderungen und Gerichtsentscheidungen zu einem bestehenden Beschluss
+  werden nie durch Bearbeiten der Zeile abgebildet, sondern als neuer
+  Eintrag mit `refers_to_resolution_id` ("zu lfd. Nr. X") - konsistent mit
+  dem Storno-Prinzip bei `journal_entries`.
+
 
 ## Architektur
 ```
@@ -96,6 +104,9 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
   `docker compose exec backend alembic upgrade head` tatsächlich in der DB
   vorhanden - vorher wirft jeder Zugriff `UndefinedColumn`, obwohl Code und
   Migration bereits im Repo liegen.
+- **Alembic-Revision-IDs ≤ 32 Zeichen halten — alembic_version.version_num ist standardmäßig VARCHAR(32); eine längere 
+  selbstgewählte Revision-ID führt zu StringDataRightTruncation erst beim finalen Versions-Update, nachdem der DDL-Teil der
+  Migration bereits gelaufen ist (wird aber dank Transaktions-Wrapper in env.py vollständig zurückgerollt).
 
 
 ## Arbeitsweise ab jetzt (lernorientiert)

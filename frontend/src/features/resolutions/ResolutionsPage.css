@@ -60,3 +60,59 @@
   color: #555;
   font-size: 0.9rem;
 }
+
+/* frontend/src/features/resolutions/ResolutionsPage.css — ergänzen */
+.resolutions-page__entry {
+  border-bottom: 1px solid #eee;
+  padding: 0.6rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.resolutions-page__entry-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.resolutions-page__lfd-nr {
+  background-color: var(--color-light);
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.resolutions-page__ref {
+  color: #666;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.resolutions-page__meeting {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.resolutions-page__status {
+  font-weight: 700;
+}
+
+.resolutions-page__court {
+  background-color: var(--color-light);
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.resolutions-page__entry > button {
+  align-self: flex-start;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+  font-size: 0.85rem;
+}

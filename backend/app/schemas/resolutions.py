@@ -9,10 +9,25 @@ class ResolutionCreate(BaseModel):
     resolution_date: date
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
-    # z.B. 'Eigentuemerversammlung', 'Umlaufbeschluss' - bewusst kein Enum,
-    # da die genaue Terminologie je WEG-Ordnung variieren kann.
     resolution_type: str | None = Field(default=None, max_length=50)
+    meeting_location: str | None = Field(default=None, max_length=200)
+    agenda_item: str | None = Field(default=None, max_length=50)
     proposed_by_owner_id: int | None = None
+
+    # Gerichtsentscheidung - i.d.R. erst bei einem Folgeeintrag befüllt
+    # (siehe refers_to_resolution_id), technisch aber auch am Ersteintrag
+    # zulässig.
+    court_name: str | None = Field(default=None, max_length=200)
+    court_case_number: str | None = Field(default=None, max_length=100)
+    court_decision_date: date | None = None
+    court_ruling_text: str | None = None
+    court_parties: str | None = Field(default=None, max_length=300)
+
+    status_note: str | None = None
+
+    # "zu lfd. Nr. X" - dieser Eintrag dokumentiert eine Entwicklung zu einem
+    # bestehenden Beschluss, ohne die ursprüngliche Zeile zu verändern.
+    refers_to_resolution_id: int | None = None
 
 
 class ResolutionOut(BaseModel):
@@ -20,9 +35,20 @@ class ResolutionOut(BaseModel):
 
     resolution_id: int
     property_id: int
+    lfd_nr: int
     resolution_date: date
     title: str
     description: str | None
     resolution_type: str | None
+    meeting_location: str | None
+    agenda_item: str | None
     proposed_by_owner_id: int | None
+    court_name: str | None
+    court_case_number: str | None
+    court_decision_date: date | None
+    court_ruling_text: str | None
+    court_parties: str | None
+    status_note: str | None
+    created_by: int | None
+    refers_to_resolution_id: int | None
     created_at: datetime

@@ -6,23 +6,67 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# backend/app/models/wirtschaftsplan.py — ResolutionCollection ersetzen
 class ResolutionCollection(Base):
     """
     Gesetzlich vorgeschriebene Beschluss-Sammlung (§ 24 WEG). Einträge werden
     im Regelbetrieb NICHT gelöscht (dauerhafte Dokumentationspflicht) —
     deleted_at ist nur für die Korrektur von Fehlerfassungen vorgesehen,
     nicht für reguläres Lifecycle-Management wie bei anderen Tabellen.
+
+    Feldabgleich mit dem Muster einer Beschluss-Sammlung:
+      - lfd_nr                                -> "Lfd. Nr." (nie wieder-
+                                                  verwendet, auch nicht nach
+                                                  Soft-Delete, s. Migration
+                                                  0002 - UNIQUE ohne
+                                                  deleted_at-Filter)
+      - title/description                     -> "Beschlusswortlaut"
+      - resolution_type/meeting_location/
+        resolution_date/agenda_item             -> "Versammlung (Art/Ort/
+                                                    Datum/TOP) bzw. Umlauf-
+                                                    beschluss (Datum der
+                                                    Verkündung)"
+      - court_name/court_case_number/
+        court_decision_date/court_ruling_text/
+        court_parties                           -> "Gerichtsentscheidung
+                                                    (Tenor/Gericht/Datum/
+                                                    Az./Parteien)"
+      - status_note                            -> "Vermerke" (Freitext, da
+                                                    Kombinationen wie
+                                                    "angenommen / angefochten
+                                                    mit Klage vom ..."
+                                                    vorkommen)
+      - created_by/created_at                  -> "Eintragungsvermerk"
+
+    Spätere Entwicklungen zu einem Beschluss (z.B. eine Gerichtsentscheidung)
+    werden NICHT durch Bearbeiten der bestehenden Zeile abgebildet, sondern
+    durch einen neuen Eintrag mit refers_to_resolution_id ("zu lfd. Nr. X")
+    - exakt wie im Muster (Nr. 31 "zu lfd. Nr. 17") und konsistent mit dem
+    Storno-Prinzip bei journal_entries (reversed_entry_id).
     """
 
     __tablename__ = "resolution_collection"
 
     resolution_id: Mapped[int] = mapped_column(primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.property_id"))
+    lfd_nr: Mapped[int]
     resolution_date: Mapped[date]
     title: Mapped[str]
     description: Mapped[str | None] = mapped_column(Text)
     resolution_type: Mapped[str | None]
+    meeting_location: Mapped[str | None]
+    agenda_item: Mapped[str | None]
     proposed_by_owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
+    court_name: Mapped[str | None]
+    court_case_number: Mapped[str | None]
+    court_decision_date: Mapped[date | None]
+    court_ruling_text: Mapped[str | None] = mapped_column(Text)
+    court_parties: Mapped[str | None]
+    status_note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.user_id"))
+    refers_to_resolution_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resolution_collection.resolution_id")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
 

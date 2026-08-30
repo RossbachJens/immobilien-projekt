@@ -22,6 +22,7 @@ export function Navbar() {
     <Link to="/tenants">Mieter</Link>
     <Link to="/journal-entries">Buchhaltung</Link>
     <Link to="/resolutions">Beschluss-Sammlung</Link>
+    <Link to="/budget-plans">Wirtschaftsplan</Link>
     {user.is_admin && <Link to="/users">Nutzerverwaltung</Link>}
   </nav>
 )}

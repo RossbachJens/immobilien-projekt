@@ -1,6 +1,7 @@
 # backend/app/routers/resolutions.py
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access import accessible_property_ids
@@ -15,12 +16,20 @@ router = APIRouter(prefix="/resolutions", tags=["resolutions"])
 
 
 def _require_write_role(current_user: User) -> None:
-    # Gleiches Muster wie in properties.py/units.py/accounts.py - noch kein
-    # gemeinsamer Ort dafür.
     if resolve_role(current_user) not in ("admin", "verwalter"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "Nur Administratoren oder zugeordnete Verwalter dürfen Beschlüsse erfassen.",
+        )
+
+
+def _require_read_access(current_user: User) -> None:
+    """Beschluss-Sammlung ist Eigentümern/Verwaltern/Admins vorbehalten - anders
+    als bei properties/units haben Mieter hier kein Einsichtsrecht."""
+    if resolve_role(current_user) == "mieter":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Mieter haben keinen Zugriff auf die Beschluss-Sammlung.",
         )
 
 
@@ -32,15 +41,23 @@ def _check_property_accessible(db: Session, property_id: int, current_user: User
     property_ids = accessible_property_ids(db, current_user)
     if property_ids is not None and property_id not in property_ids:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Liegenschaft")
-    
-def _require_read_access(current_user: User) -> None:
-    """Beschluss-Sammlung ist Eigentümern/Verwaltern/Admins vorbehalten - anders
-    als bei properties/units haben Mieter hier kein Einsichtsrecht."""
-    if resolve_role(current_user) == "mieter":
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Mieter haben keinen Zugriff auf die Beschluss-Sammlung.",
+
+
+def _next_lfd_nr(db: Session, property_id: int) -> int:
+    """Nächste laufende Nummer für diese Liegenschaft. Bewusst ohne
+    deleted_at-Filter und ohne Wiederverwendung nach Soft-Delete - siehe
+    Docstring am Model. Kein explizites Row-Locking: bei der geringen
+    Schreibfrequenz einer WEG-Verwaltung ist das Kollisionsrisiko
+    vernachlässigbar; der UNIQUE-Constraint (Migration 0002) verhindert im
+    Zweifel trotzdem doppelte Nummern (siehe IntegrityError-Handling unten).
+    """
+    current_max = db.scalar(
+        select(func.max(ResolutionCollection.lfd_nr)).where(
+            ResolutionCollection.property_id == property_id
         )
+    )
+    return (current_max or 0) + 1
+
 
 @router.get("", response_model=list[ResolutionOut])
 def list_resolutions(
@@ -57,7 +74,11 @@ def list_resolutions(
     if property_id is not None:
         query = query.where(ResolutionCollection.property_id == property_id)
 
-    query = query.order_by(ResolutionCollection.resolution_date.desc())
+    # Sortierung nach lfd_nr statt resolution_date - die laufende Nummer IST
+    # die gesetzlich vorgeschriebene Eintragungsreihenfolge (kann vom
+    # fachlichen Beschlussdatum abweichen, z.B. bei nachträglich erfassten
+    # Umlaufbeschlüssen).
+    query = query.order_by(ResolutionCollection.lfd_nr)
     return list(db.scalars(query))
 
 
@@ -75,8 +96,28 @@ def create_resolution(
         if owner is None or owner.deleted_at is not None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannter Eigentümer")
 
-    resolution = ResolutionCollection(**payload.model_dump())
+    if payload.refers_to_resolution_id is not None:
+        referenced = db.get(ResolutionCollection, payload.refers_to_resolution_id)
+        if referenced is None or referenced.property_id != payload.property_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Referenzierter Beschluss existiert nicht in dieser Liegenschaft.",
+            )
+
+    resolution = ResolutionCollection(
+        **payload.model_dump(),
+        lfd_nr=_next_lfd_nr(db, payload.property_id),
+        created_by=current_user.user_id,
+    )
     db.add(resolution)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Laufende Nummer wurde zwischenzeitlich vergeben - bitte erneut versuchen.",
+        ) from exc
+
     db.refresh(resolution)
     return resolution

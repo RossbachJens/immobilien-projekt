@@ -1,0 +1,69 @@
+/* frontend/src/features/budgetPlans/BudgetPositionForm.css */
+.budget-position-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 480px;
+  margin-top: var(--space-1);
+}
+
+.budget-position-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.budget-position-form input,
+.budget-position-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.budget-position-form__hint {
+  color: #666;
+  font-style: italic;
+}
+
+.budget-position-form__key {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.budget-position-form__radio {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.budget-position-form__error {
+  color: var(--color-error);
+}
+
+.budget-position-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.budget-position-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.budget-position-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.budget-position-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}

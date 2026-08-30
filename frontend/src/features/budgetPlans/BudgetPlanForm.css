@@ -1,0 +1,46 @@
+/* frontend/src/features/budgetPlans/BudgetPlanForm.css */
+.budget-plan-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 400px;
+}
+
+.budget-plan-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.budget-plan-form input {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.budget-plan-form__error {
+  color: var(--color-error);
+}
+
+.budget-plan-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.budget-plan-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.budget-plan-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.budget-plan-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}
