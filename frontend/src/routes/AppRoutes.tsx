@@ -18,6 +18,12 @@ import { ResolutionsPage } from "../features/resolutions/ResolutionsPage";
 // frontend/src/routes/AppRoutes.tsx — Imports + Routes ergänzen
 import { BudgetPlansPage } from "../features/budgetPlans/BudgetPlansPage";
 import { SpecialAssessmentsPage } from "../features/specialAssessments/SpecialAssessmentsPage";
+// frontend/src/routes/AppRoutes.tsx — Import + Route ergänzen
+import { SettlementPeriodsPage } from "../features/settlementPeriods/SettlementPeriodsPage";
+// frontend/src/routes/AppRoutes.tsx — Imports + Route ergänzen
+import { BankAccountsPage } from "../features/bankAccounts/BankAccountsPage";
+import { MeetingsPage } from "../features/meetings/MeetingsPage";
+// ...
 
 export function AppRoutes() {
   return (
@@ -36,6 +42,9 @@ export function AppRoutes() {
         <Route path="/resolutions" element={<ProtectedRoute><ResolutionsPage /></ProtectedRoute>} />
         <Route path="/budget-plans" element={<ProtectedRoute><BudgetPlansPage /></ProtectedRoute>} />
         <Route path="/special-assessments" element={<ProtectedRoute><SpecialAssessmentsPage /></ProtectedRoute>} />
+        <Route path="/settlement-periods" element={<ProtectedRoute><SettlementPeriodsPage /></ProtectedRoute>} />
+        <Route path="/bank-accounts" element={<ProtectedRoute><BankAccountsPage /></ProtectedRoute>} />
+        <Route path="/meetings" element={<ProtectedRoute><MeetingsPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={

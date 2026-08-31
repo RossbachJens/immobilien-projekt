@@ -11,6 +11,8 @@ from app.db.session import get_db
 from app.models.stammdaten import Owner, Property, User
 from app.models.wirtschaftsplan import ResolutionCollection
 from app.schemas.resolutions import ResolutionCreate, ResolutionOut
+# backend/app/routers/resolutions.py — Import + Validierung ergänzen
+from app.models.meetings import OwnerMeeting
 
 router = APIRouter(prefix="/resolutions", tags=["resolutions"])
 
@@ -103,6 +105,9 @@ def create_resolution(
                 status.HTTP_400_BAD_REQUEST,
                 "Referenzierter Beschluss existiert nicht in dieser Liegenschaft.",
             )
+    # in create_resolution, direkt nach der refers_to_resolution_id-Prüfung ergänzen:
+    if payload.meeting_id is not None:
+        _validate_meeting(db, payload.meeting_id, payload.property_id)
 
     resolution = ResolutionCollection(
         **payload.model_dump(),
@@ -121,3 +126,8 @@ def create_resolution(
 
     db.refresh(resolution)
     return resolution
+
+def _validate_meeting(db: Session, meeting_id: int, property_id: int) -> None:
+    meeting = db.get(OwnerMeeting, meeting_id)
+    if meeting is None or meeting.property_id != property_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Versammlung für diese Liegenschaft.")

@@ -1,0 +1,209 @@
+/* frontend/src/features/settlementPeriods/SettlementPeriodsPage.css */
+.settlement-periods-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settlement-periods-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.settlement-periods-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.settlement-periods-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settlement-periods-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.settlement-periods-page__list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.settlement-periods-page__period {
+  border: 1px solid #eee;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+}
+
+.settlement-periods-page__period-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.settlement-periods-page__period-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.settlement-periods-page__period-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.settlement-periods-page__status {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  background-color: var(--color-light);
+  color: #555;
+}
+
+.settlement-periods-page__status--Beschlossen {
+  background-color: #e6f4e6;
+  color: var(--color-success);
+}
+
+.settlement-periods-page__status--Inaktiv {
+  background-color: #fbeaea;
+  color: var(--color-error);
+}
+
+.settlement-periods-page__resolution {
+  font-size: 0.85rem;
+  color: #555;
+  margin-top: 0.2rem;
+}
+
+.settlement-periods-page__approve {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  background-color: var(--color-light);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settlement-periods-page__approve label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 360px;
+}
+
+.settlement-periods-page__approve select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.settlement-periods-page__approve-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.settlement-periods-page__approve-hint {
+  color: #777;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.settlement-period-details {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settlement-period-details__position summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.settlement-period-details__account {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.settlement-period-details__shares-table,
+.settlement-period-details__summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.settlement-period-details__shares-table th,
+.settlement-period-details__shares-table td,
+.settlement-period-details__summary-table th,
+.settlement-period-details__summary-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.settlement-period-details__total {
+  font-weight: 700;
+}
+
+.settlement-period-details__locked {
+  color: #777;
+  font-style: italic;
+}
+
+.settlement-period-details__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.settlement-period-details__actions button {
+  padding: 0.4rem 0.8rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.settlement-period-details__summaries-heading {
+  margin-top: var(--space-1);
+}
+
+.settlement-period-details__balance--due {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.settlement-period-details__balance--refund {
+  color: var(--color-success);
+  font-weight: 700;
+}

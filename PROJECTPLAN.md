@@ -78,6 +78,14 @@
   werden nie durch Bearbeiten der Zeile abgebildet, sondern als neuer
   Eintrag mit `refers_to_resolution_id` ("zu lfd. Nr. X") - konsistent mit
   dem Storno-Prinzip bei `journal_entries`.
+- **Zahlungseingang & Nebenkostenabrechnung (Phase 5):** Zahlungseingänge sind keine eigene Tabelle, sondern automatisiert
+  erzeugte journal_entries (Bank an Forderung, unit_id/lease_id gesetzt – analog 03_procedures.sql) über POST /payments. Die 
+  Nebenkostenabrechnung (settlement_periods/settlement_positions/unit_settlement_shares/unit_settlement_summaries) folgt dem 
+  Wirtschaftsplan-Muster (Entwurf → Beschlossen → Inaktiv, Kopplung an resolution_collection). is_apportionable hängt an der 
+  Position, nicht am Konto. Der PDF-Export (GET /settlement-periods/{id}/units/{id}/export, reportlab) bildet den Kernteil der 
+  Muster-Jahresabrechnung ab – §35a-EStG-Bescheinigung, Rücklagendarstellung/Vermögensaufstellung und eine separate Mieter-
+  Betriebskostenabrechnung sind bewusst nicht umgesetzt (fehlende Kategorisierung/Bestandsführung) und bei Bedarf ein eigener 
+  Folge-Slice.
 
 
 ## Architektur
@@ -154,6 +162,8 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - [ ] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung ✅; Frontend für Units/Owners/Tenants offen)*
 - [x] Phase 3 — Buchhaltung *(Kontenrahmen global + liegenschaftseigen, Journal-Erfassung mit Soll=Haben-Trigger, Storno-Flow, Frontend inkl. Kontenverwaltung je Liegenschaft ✅)*
 - [ ] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung
-- [ ] Phase 5 — Nebenkostenabrechnung
+- [x] Phase 5 — Nebenkostenabrechnung *(Datenmodell, Zahlungseingang, Ist-Kosten-Ermittlung & Verteilung nach Umlageschlüssel,
+ Beschluss-Kopplung, PDF-Export je Einheit ✅; §35a-Bescheinigung, Rücklagendarstellung/Vermögensaufstellung, Wirtschaftsplan-
+ Spalte in derselben Abrechnung und Mieter-Betriebskostenabrechnung nicht abgebildet)*
 - [ ] Phase 6 — Mietsollstellung & SEPA
 - [ ] Phase 7 — Härtung & Betrieb

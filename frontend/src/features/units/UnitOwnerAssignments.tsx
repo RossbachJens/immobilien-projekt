@@ -31,6 +31,10 @@ export function UnitOwnerAssignments({ unitId }: UnitOwnerAssignmentsProps) {
   const [ownershipShare, setOwnershipShare] = useState("");
   const [validFrom, setValidFrom] = useState(todayIso());
   const [error, setError] = useState<string | null>(null);
+    // frontend/src/features/units/UnitOwnerAssignments.tsx — State ergänzen
+  const [endingHistoryId, setEndingHistoryId] = useState<number | null>(null);
+  const [endDate, setEndDate] = useState(todayIso());
+  const [endError, setEndError] = useState<string | null>(null);
 
   function handleAssign(event: FormEvent) {
     event.preventDefault();
@@ -53,9 +57,26 @@ export function UnitOwnerAssignments({ unitId }: UnitOwnerAssignmentsProps) {
     );
   }
 
-  function handleEndAssignment(historyId: number) {
-    if (!window.confirm("Diese Eigentümerzuordnung zum heutigen Tag beenden?")) return;
-    updateAssignmentMutation.mutate({ historyId, payload: { valid_to: todayIso() } });
+  // frontend/src/features/units/UnitOwnerAssignments.tsx — handleEndAssignment ersetzen
+function startEnding(historyId: number, validFrom: string) {
+    setEndingHistoryId(historyId);
+    // Nur ein Vorschlag, kein fester Wert - ein Eigentümerwechsel wird oft
+    // im Voraus (Notartermin) oder rückwirkend (Grundbucheintrag) erfasst.
+    setEndDate(todayIso() > validFrom ? todayIso() : validFrom);
+    setEndError(null);
+  }
+
+  function confirmEnding(event: FormEvent) {
+    event.preventDefault();
+    if (endingHistoryId === null) return;
+    setEndError(null);
+    updateAssignmentMutation.mutate(
+      { historyId: endingHistoryId, payload: { valid_to: endDate } },
+      {
+        onSuccess: () => setEndingHistoryId(null),
+        onError: () => setEndError("Gültigkeitsende konnte nicht gespeichert werden."),
+      },
+    );
   }
 
   function handleDeleteAssignment(historyId: number) {
@@ -85,15 +106,40 @@ export function UnitOwnerAssignments({ unitId }: UnitOwnerAssignmentsProps) {
       {current.length === 0 && <p className="unit-owner-assignments__empty">Kein Eigentümer zugeordnet.</p>}
       {current.length > 0 && (
         <ul className="unit-owner-assignments__list">
-          {current.map((h) => (
+// frontend/src/features/units/UnitOwnerAssignments.tsx — current.map(...) ersetzen
+{current.map((h) => (
             <li key={h.history_id}>
               {ownerLabel(h.owner_id)} · Anteil {h.ownership_share} · seit {h.valid_from}
-              <button type="button" onClick={() => handleEndAssignment(h.history_id)}>
+              <button type="button" onClick={() => startEnding(h.history_id, h.valid_from)}>
                 Beenden
               </button>
               <button type="button" onClick={() => handleDeleteAssignment(h.history_id)}>
                 Löschen
               </button>
+
+              {endingHistoryId === h.history_id && (
+                <form onSubmit={confirmEnding} className="unit-owner-assignments__end-form">
+                  <label>
+                    Gültig bis
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      min={h.valid_from}
+                      required
+                    />
+                  </label>
+                  {endError && <p className="unit-owner-assignments__error">{endError}</p>}
+                  <div className="unit-owner-assignments__end-form-actions">
+                    <button type="submit" disabled={updateAssignmentMutation.isPending}>
+                      {updateAssignmentMutation.isPending ? "Wird gespeichert…" : "Bestätigen"}
+                    </button>
+                    <button type="button" onClick={() => setEndingHistoryId(null)}>
+                      Abbrechen
+                    </button>
+                  </div>
+                </form>
+              )}
             </li>
           ))}
         </ul>

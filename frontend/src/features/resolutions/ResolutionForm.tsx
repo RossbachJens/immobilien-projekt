@@ -3,11 +3,13 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import type { Resolution, ResolutionPayload } from "./api";
+// frontend/src/features/resolutions/ResolutionForm.tsx — Props + Feld ergänzen
+import type { Meeting } from "../meetings/api";
 import "./ResolutionForm.css";
 
 interface ResolutionFormProps {
   propertyId: number;
-  /** Gesetzt = Folgeeintrag ("zu lfd. Nr. X") zu einem bestehenden Beschluss. */
+  meetings?: Meeting[];   // NEU
   referencedResolution?: Resolution;
   submitLabel: string;
   onSubmit: (payload: ResolutionPayload) => void;
@@ -38,6 +40,7 @@ const STATUS_SUGGESTIONS = [
 
 export function ResolutionForm({
   propertyId,
+  meetings,
   referencedResolution,
   submitLabel,
   onSubmit,
@@ -62,6 +65,7 @@ export function ResolutionForm({
   const [courtDecisionDate, setCourtDecisionDate] = useState("");
   const [courtRulingText, setCourtRulingText] = useState("");
   const [courtParties, setCourtParties] = useState("");
+    const [meetingId, setMeetingId] = useState<number | "">("");
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -80,11 +84,26 @@ export function ResolutionForm({
       court_ruling_text: showCourtFields ? courtRulingText || null : null,
       court_parties: showCourtFields ? courtParties || null : null,
       refers_to_resolution_id: referencedResolution?.resolution_id ?? null,
+      meeting_id: meetingId !== "" ? meetingId : null,  // NEU
     });
   }
+  
 
   return (
     <form onSubmit={handleSubmit} className="resolution-form">
+            {meetings && meetings.length > 0 && (
+        <label>
+          Zugehörige Versammlung
+          <select value={meetingId} onChange={(e) => setMeetingId(e.target.value ? Number(e.target.value) : "")}>
+            <option value="">– keine –</option>
+            {meetings.map((m) => (
+              <option key={m.meeting_id} value={m.meeting_id}>
+                {m.meeting_type} – {m.meeting_date}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {isFollowUp && (
         <p className="resolution-form__reference">
           Folgeeintrag zu lfd. Nr. {referencedResolution.lfd_nr} – „{referencedResolution.title}“

@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# backend/app/schemas/resolutions.py — ResolutionCreate: meeting_id ergänzen
 class ResolutionCreate(BaseModel):
     property_id: int
     resolution_date: date
@@ -13,22 +14,14 @@ class ResolutionCreate(BaseModel):
     meeting_location: str | None = Field(default=None, max_length=200)
     agenda_item: str | None = Field(default=None, max_length=50)
     proposed_by_owner_id: int | None = None
-
-    # Gerichtsentscheidung - i.d.R. erst bei einem Folgeeintrag befüllt
-    # (siehe refers_to_resolution_id), technisch aber auch am Ersteintrag
-    # zulässig.
+    meeting_id: int | None = None  # NEU - Rückverknüpfung zur Versammlung
     court_name: str | None = Field(default=None, max_length=200)
     court_case_number: str | None = Field(default=None, max_length=100)
     court_decision_date: date | None = None
     court_ruling_text: str | None = None
     court_parties: str | None = Field(default=None, max_length=300)
-
     status_note: str | None = None
-
-    # "zu lfd. Nr. X" - dieser Eintrag dokumentiert eine Entwicklung zu einem
-    # bestehenden Beschluss, ohne die ursprüngliche Zeile zu verändern.
     refers_to_resolution_id: int | None = None
-
 
 class ResolutionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -43,6 +36,8 @@ class ResolutionOut(BaseModel):
     meeting_location: str | None
     agenda_item: str | None
     proposed_by_owner_id: int | None
+    # ResolutionOut — meeting_id ergänzen (nach proposed_by_owner_id)
+    meeting_id: int | None
     court_name: str | None
     court_case_number: str | None
     court_decision_date: date | None

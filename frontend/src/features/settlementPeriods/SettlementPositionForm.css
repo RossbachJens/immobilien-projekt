@@ -1,0 +1,60 @@
+/* frontend/src/features/settlementPeriods/SettlementPositionForm.css */
+.settlement-position-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 480px;
+  margin-top: var(--space-1);
+}
+
+.settlement-position-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.settlement-position-form input,
+.settlement-position-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.settlement-position-form__checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.settlement-position-form__hint {
+  color: #666;
+  font-style: italic;
+}
+
+.settlement-position-form__error {
+  color: var(--color-error);
+}
+
+.settlement-position-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.settlement-position-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.settlement-position-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.settlement-position-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}

@@ -1,0 +1,47 @@
+/* frontend/src/features/settlementPeriods/SettlementPeriodForm.css */
+.settlement-period-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 400px;
+}
+
+.settlement-period-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.settlement-period-form input,
+.settlement-period-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.settlement-period-form__error {
+  color: var(--color-error);
+}
+
+.settlement-period-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.settlement-period-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.settlement-period-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.settlement-period-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}

@@ -1,0 +1,89 @@
+/* frontend/src/features/meetings/AgendaItemsPanel.css */
+.agenda-items-panel {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+}
+
+.agenda-items-panel__empty {
+  color: #777;
+  font-style: italic;
+}
+
+.agenda-items-panel__list {
+  padding-left: 1.2rem;
+  margin: var(--space-1) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agenda-items-panel__item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.agenda-items-panel__item-row button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.agenda-items-panel__description {
+  color: #555;
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.agenda-items-panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 380px;
+  margin-top: var(--space-1);
+}
+
+.agenda-items-panel__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.agenda-items-panel__form input,
+.agenda-items-panel__form textarea {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.agenda-items-panel__error {
+  color: var(--color-error);
+}
+
+.agenda-items-panel__form-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.agenda-items-panel__form-actions button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.agenda-items-panel__form-actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.agenda-items-panel__form-actions button[type="button"] {
+  background-color: var(--color-light);
+}

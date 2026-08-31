@@ -24,7 +24,10 @@ export function Navbar() {
     <Link to="/resolutions">Beschluss-Sammlung</Link>
     <Link to="/budget-plans">Wirtschaftsplan</Link>
     <Link to="/special-assessments">Sonderumlagen</Link>
+    <Link to="/settlement-periods">Nebenkostenabrechnung</Link>
     {user.is_admin && <Link to="/users">Nutzerverwaltung</Link>}
+    <Link to="/bank-accounts">Bankkonten</Link>
+    <Link to="/meetings">Versammlungen</Link>
   </nav>
 )}
         {user && (

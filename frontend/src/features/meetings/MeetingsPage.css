@@ -1,0 +1,131 @@
+/* frontend/src/features/meetings/MeetingsPage.css */
+.meetings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.meetings-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.meetings-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.meetings-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.meetings-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.meetings-page__list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.meetings-page__entry {
+  border: 1px solid #eee;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+}
+
+.meetings-page__entry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.meetings-page__entry-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.meetings-page__entry-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.meetings-page__status {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  background-color: var(--color-light);
+  color: #555;
+}
+
+.meetings-page__status--Protokolliert {
+  background-color: #e6f4e6;
+  color: var(--color-success);
+}
+
+.meetings-page__detail {
+  margin-top: var(--space-1);
+}
+
+.meetings-page__minutes-form {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 480px;
+}
+
+.meetings-page__minutes-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.meetings-page__minutes-form textarea {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
+}
+
+.meetings-page__minutes-form button {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.meetings-page__error {
+  color: var(--color-error);
+}

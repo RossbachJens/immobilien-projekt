@@ -2,15 +2,17 @@
 import { useState } from "react";
 
 import { Card } from "../../components/Card";
+import { accountLabel } from "../accounts/format";
 import { PropertyAccountsManager } from "../accounts/PropertyAccountsManager";
 import { useAccounts } from "../accounts/useAccounts";
+import { PaymentForm } from "../payments/PaymentForm";
+import type { PaymentPayload } from "../payments/api";
+import { useCreatePayment } from "../payments/usePayments";
 import { useProperties } from "../properties/useProperties";
 import { useUnits } from "../units/useUnits";
 import type { JournalEntryPayload } from "./api";
 import { JournalEntryForm } from "./JournalEntryForm";
 import { useCreateJournalEntry, useJournalEntries, useStornoJournalEntry } from "./useJournalEntries";
-// frontend/src/features/journalEntries/JournalEntriesPage.tsx — Import ergänzen
-import { accountLabel } from "../accounts/format";
 import "./JournalEntriesPage.css";
 
 export function JournalEntriesPage() {
@@ -24,15 +26,11 @@ export function JournalEntriesPage() {
 
   const createMutation = useCreateJournalEntry(selectedPropertyId ?? -1);
   const stornoMutation = useStornoJournalEntry(selectedPropertyId ?? -1);
+  const createPaymentMutation = useCreatePayment(selectedPropertyId ?? -1);
 
-  const [mode, setMode] = useState<"idle" | "creating">("idle");
+  const [mode, setMode] = useState<"idle" | "creating" | "recording-payment">("idle");
   const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-
-  function accountLabel(accountId: number): string {
-    const account = accounts?.find((a) => a.account_id === accountId);
-    return account ? `${account.account_number} – ${account.account_name}` : `Konto #${accountId}`;
-  }
 
   function unitLabel(unitId: number | null): string {
     if (unitId == null) return "–";
@@ -46,6 +44,14 @@ export function JournalEntriesPage() {
       onSuccess: () => setMode("idle"),
       onError: () =>
         setFormError("Buchung konnte nicht gespeichert werden - Soll und Haben eventuell nicht ausgeglichen."),
+    });
+  }
+
+  function handlePayment(payload: PaymentPayload) {
+    setFormError(null);
+    createPaymentMutation.mutate(payload, {
+      onSuccess: () => setMode("idle"),
+      onError: () => setFormError("Zahlung konnte nicht gebucht werden."),
     });
   }
 
@@ -95,9 +101,14 @@ export function JournalEntriesPage() {
             <div className="journal-entries-page__header">
               <h2>Buchungen</h2>
               {mode === "idle" && (
-                <button type="button" onClick={() => setMode("creating")}>
-                  Neue Buchung
-                </button>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="button" onClick={() => setMode("creating")}>
+                    Neue Buchung
+                  </button>
+                  <button type="button" onClick={() => setMode("recording-payment")}>
+                    Zahlung erfassen
+                  </button>
+                </div>
               )}
             </div>
 
@@ -159,17 +170,20 @@ export function JournalEntriesPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {entry.lines.map((line) => (
-                            <tr key={line.line_id}>
-                              // bestehende lokale accountLabel-Funktion entfernen und stattdessen im JSX:
-                              <td title={accounts ? accountLabel(accounts.find((a) => a.account_id === line.account_id) ?? { account_number: "", account_name: `Konto #${line.account_id}` }) : ""}>
-                                {accountLabel(accounts?.find((a) => a.account_id === line.account_id) ?? { account_number: "", account_name: `Konto #${line.account_id}` })}
-                              </td>
-                              <td>{unitLabel(line.unit_id)}</td>
-                              <td>{line.direction === "DEBIT" ? `${line.amount.toFixed(2)} €` : ""}</td>
-                              <td>{line.direction === "CREDIT" ? `${line.amount.toFixed(2)} €` : ""}</td>
-                            </tr>
-                          ))}
+                          {entry.lines.map((line) => {
+                            const account = accounts?.find((a) => a.account_id === line.account_id) ?? {
+                              account_number: "",
+                              account_name: `Konto #${line.account_id}`,
+                            };
+                            return (
+                              <tr key={line.line_id}>
+                                <td title={accountLabel(account)}>{accountLabel(account)}</td>
+                                <td>{unitLabel(line.unit_id)}</td>
+                                <td>{line.direction === "DEBIT" ? `${line.amount.toFixed(2)} €` : ""}</td>
+                                <td>{line.direction === "CREDIT" ? `${line.amount.toFixed(2)} €` : ""}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     )}
@@ -189,6 +203,19 @@ export function JournalEntriesPage() {
             onSubmit={handleCreate}
             onCancel={() => setMode("idle")}
             isSubmitting={createMutation.isPending}
+            error={formError}
+          />
+        </Card>
+      )}
+
+      {mode === "recording-payment" && selectedPropertyId !== undefined && (
+        <Card>
+          <h2>Zahlungseingang erfassen</h2>
+          <PaymentForm
+            units={units ?? []}
+            onSubmit={handlePayment}
+            onCancel={() => setMode("idle")}
+            isSubmitting={createPaymentMutation.isPending}
             error={formError}
           />
         </Card>

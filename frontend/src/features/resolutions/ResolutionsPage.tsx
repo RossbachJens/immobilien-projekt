@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 import { Card } from "../../components/Card";
+import { useMeetings } from "../meetings/useMeetings";
 import { useProperties } from "../properties/useProperties";
 import type { ResolutionPayload } from "./api";
 import { ResolutionForm } from "./ResolutionForm";
@@ -21,6 +22,7 @@ export function ResolutionsPage() {
 
   const selectedPropertyId = propertyId === "" ? undefined : propertyId;
   const { data: resolutions, isLoading, isError, error } = useResolutions(selectedPropertyId);
+  const { data: meetings } = useMeetings(selectedPropertyId);
   const createMutation = useCreateResolution(selectedPropertyId ?? -1);
 
   // number = resolution_id, zu dem ein Folgeeintrag erfasst wird.
@@ -35,6 +37,12 @@ export function ResolutionsPage() {
     (error as { response?: { status?: number } }).response?.status === 403;
 
   const followUpTarget = typeof mode === "number" ? resolutions?.find((r) => r.resolution_id === mode) : undefined;
+
+  function meetingLabel(meetingId: number | null): string | null {
+    if (meetingId == null) return null;
+    const m = meetings?.find((x) => x.meeting_id === meetingId);
+    return m ? `${m.meeting_type} – ${m.meeting_date}` : `Versammlung #${meetingId}`;
+  }
 
   function handleCreate(payload: ResolutionPayload) {
     setFormError(null);
@@ -122,6 +130,10 @@ export function ResolutionsPage() {
                     </p>
                   )}
 
+                  {meetingLabel(r.meeting_id) && (
+                    <p className="resolutions-page__meeting">Versammlung: {meetingLabel(r.meeting_id)}</p>
+                  )}
+
                   {r.description && <p className="resolutions-page__description">{r.description}</p>}
 
                   {r.status_note && <p className="resolutions-page__status">Vermerke: {r.status_note}</p>}
@@ -154,6 +166,7 @@ export function ResolutionsPage() {
           <h2>{typeof mode === "number" ? "Folgeeintrag erfassen" : "Neuen Beschluss erfassen"}</h2>
           <ResolutionForm
             propertyId={selectedPropertyId}
+            meetings={meetings}
             referencedResolution={followUpTarget}
             submitLabel={typeof mode === "number" ? "Folgeeintrag anlegen" : "Anlegen"}
             onSubmit={handleCreate}

@@ -8,7 +8,7 @@ from app.core.deps import get_current_user
 from app.core.roles import resolve_role
 from app.db.session import get_db
 from app.models.stammdaten import Owner, Property, Unit, User
-from app.models.zuordnungen import UnitOwnerHistory
+
 from app.schemas.units import (
     OwnerAssignmentCreate,
     OwnerAssignmentOut,
@@ -17,6 +17,8 @@ from app.schemas.units import (
     UnitOut,
     UnitUpdate,
 )
+from app.models.zuordnungen import Lease, UnitOwnerHistory
+from app.schemas.leases import LeaseOut
 
 router = APIRouter(prefix="/units", tags=["units"])
 
@@ -241,3 +243,24 @@ def delete_owner_assignment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
     db.delete(history)
     db.commit()
+    
+# ... nach den bestehenden /owners-Endpunkten:
+
+@router.get("/{unit_id}/leases", response_model=list[LeaseOut])
+def list_unit_leases(
+    unit_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[Lease]:
+    """Für die Auswahl beim Erfassen eines Zahlungseingangs
+    (payment_type='miete', app/routers/payments.py) - liefert alle nicht
+    gelöschten Mietverträge dieser Einheit, nicht nur den aktiven, da auch
+    für beendete Verträge noch Zahlungen nacherfasst werden können."""
+    _get_readable_unit(db, unit_id, current_user)
+    return list(
+        db.scalars(
+            select(Lease)
+            .where(Lease.unit_id == unit_id, Lease.deleted_at.is_(None))
+            .order_by(Lease.start_date.desc())
+        )
+    )

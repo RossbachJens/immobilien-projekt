@@ -21,6 +21,7 @@ export interface Resolution {
   created_by: number | null;
   refers_to_resolution_id: number | null;
   created_at: string;
+  meeting_id: number | null;
 }
 
 export interface ResolutionPayload {
@@ -38,6 +39,7 @@ export interface ResolutionPayload {
   court_parties?: string | null;
   status_note?: string | null;
   refers_to_resolution_id?: number | null;
+  meeting_id?: number | null;
 }
 
 export async function listResolutions(propertyId?: number): Promise<Resolution[]> {

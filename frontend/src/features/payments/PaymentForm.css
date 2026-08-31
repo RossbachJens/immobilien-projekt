@@ -1,0 +1,63 @@
+/* frontend/src/features/payments/PaymentForm.css */
+.payment-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 400px;
+}
+
+.payment-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.payment-form input,
+.payment-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.payment-form__type {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.payment-form__type label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.payment-form__error {
+  color: var(--color-error);
+}
+
+.payment-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.payment-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.payment-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.payment-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}
