@@ -6,11 +6,17 @@ import { AllocationKeyField } from "../../components/AllocationKeyField";
 import { accountLabel, accountLabelShort } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
 
-import type { BudgetPositionPayload } from "./api";
+import type { BudgetPosition, BudgetPositionPayload } from "./api";
 import "./BudgetPositionForm.css";
+
+const STANDARD_KEYS = ["MEA", "Wohnflaeche"];
 
 interface BudgetPositionFormProps {
   propertyId: number;
+  // Gesetzt = Bearbeiten einer bestehenden Position statt Neuanlage - nur
+  // möglich, solange der Plan im Entwurf ist (siehe BudgetPlansPage).
+  initialValues?: BudgetPosition;
+  submitLabel?: string;
   onSubmit: (payload: BudgetPositionPayload) => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -19,6 +25,8 @@ interface BudgetPositionFormProps {
 
 export function BudgetPositionForm({
   propertyId,
+  initialValues,
+  submitLabel,
   onSubmit,
   onCancel,
   isSubmitting,
@@ -34,12 +42,26 @@ export function BudgetPositionForm({
   const expenseAccounts = (accounts ?? []).filter((a) => a.type === "AUFWAND");
   const reserveAccounts = (accounts ?? []).filter((a) => a.is_reserve_account && a.type !== "AUFWAND");
 
-  const [accountId, setAccountId] = useState<number | "">("");
-  const [description, setDescription] = useState("");
-  const [plannedAmount, setPlannedAmount] = useState("");
-  const [keyMode, setKeyMode] = useState<"standard" | "custom">("standard");
-  const [standardKey, setStandardKey] = useState("MEA");
-  const [customKey, setCustomKey] = useState("");
+  const initialIsStandardKey = initialValues
+    ? STANDARD_KEYS.includes(initialValues.allocation_key_type)
+    : true;
+
+  const [accountId, setAccountId] = useState<number | "">(initialValues?.account_id ?? "");
+  const [description, setDescription] = useState(initialValues?.description ?? "");
+  const [plannedAmount, setPlannedAmount] = useState(
+    initialValues != null ? String(initialValues.planned_amount) : "",
+  );
+  const [keyMode, setKeyMode] = useState<"standard" | "custom">(
+    initialIsStandardKey ? "standard" : "custom",
+  );
+  const [standardKey, setStandardKey] = useState(
+    initialIsStandardKey ? initialValues?.allocation_key_type ?? "MEA" : "MEA",
+  );
+  const [customKey, setCustomKey] = useState(
+    !initialIsStandardKey ? initialValues?.allocation_key_type ?? "" : "",
+  );
+
+  const isEdit = initialValues !== undefined;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -115,7 +137,9 @@ export function BudgetPositionForm({
       {error && <p className="budget-position-form__error">{error}</p>}
       <div className="budget-position-form__actions">
         <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Wird verteilt…" : "Position anlegen & verteilen"}
+          {isSubmitting
+            ? "Wird gespeichert…"
+            : (submitLabel ?? (isEdit ? "Speichern" : "Position anlegen & verteilen"))}
         </button>
         <button type="button" onClick={onCancel} disabled={isSubmitting}>
           Abbrechen

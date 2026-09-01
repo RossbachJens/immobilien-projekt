@@ -1,0 +1,61 @@
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background-color: var(--color-white);
+  border-right: 1px solid #eee;
+  padding: var(--space-2) 0;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.sidebar__link {
+  padding: 0.65rem var(--space-2);
+  color: var(--color-text);
+  font-weight: 700;
+  border-left: 3px solid transparent;
+}
+
+.sidebar__link:hover {
+  background-color: var(--color-light);
+}
+
+.sidebar__link--active {
+  background-color: var(--color-light);
+  border-left-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* Unterhalb des Tablet-Breakpoints (siehe style.css) wird aus der linken
+   Spalte eine horizontal scrollbare Leiste oberhalb des Inhalts - eine
+   Off-Canvas-/Hamburger-Lösung wäre hier mehr Aufwand, als der aktuelle
+   Funktionsumfang rechtfertigt. */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #eee;
+    padding: var(--space-1) 0;
+  }
+
+  .sidebar__nav {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding: 0 var(--space-1);
+  }
+
+  .sidebar__link {
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+
+  .sidebar__link--active {
+    border-left-color: transparent;
+    border-bottom-color: var(--color-primary);
+  }
+}

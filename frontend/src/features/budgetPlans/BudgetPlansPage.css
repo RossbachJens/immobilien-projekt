@@ -186,3 +186,20 @@
   color: #666;
   margin-top: 0.25rem;
 }
+
+/* frontend/src/features/budgetPlans/BudgetPlansPage.css — ergänzen:
+   Bearbeiten/Löschen je Position, nur sichtbar solange der Plan im
+   Entwurf ist (siehe BudgetPlanPositions in BudgetPlansPage.tsx). */
+.budget-plan-positions__position-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.budget-plan-positions__position-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}

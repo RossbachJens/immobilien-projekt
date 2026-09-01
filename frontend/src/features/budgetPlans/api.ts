@@ -50,6 +50,16 @@ export interface BudgetPositionPayload {
   allocation_key_type: string;
 }
 
+// Bewusst dieselben Felder wie BudgetPositionPayload, aber alle optional -
+// Positionen sind nur "bis zum Beschluss" (Plan-Status "Entwurf") änderbar,
+// siehe app/routers/budget_plans.py::update_budget_position.
+export interface BudgetPositionUpdatePayload {
+  account_id?: number;
+  description?: string | null;
+  planned_amount?: number;
+  allocation_key_type?: string;
+}
+
 export async function listBudgetPlans(propertyId?: number): Promise<BudgetPlan[]> {
   const { data } = await apiClient.get<BudgetPlan[]>("/budget-plans", {
     params: propertyId ? { property_id: propertyId } : undefined,
@@ -78,4 +88,20 @@ export async function createBudgetPosition(
 ): Promise<BudgetPosition> {
   const { data } = await apiClient.post<BudgetPosition>(`/budget-plans/${budgetId}/positions`, payload);
   return data;
+}
+
+export async function updateBudgetPosition(
+  budgetId: number,
+  positionId: number,
+  payload: BudgetPositionUpdatePayload,
+): Promise<BudgetPosition> {
+  const { data } = await apiClient.patch<BudgetPosition>(
+    `/budget-plans/${budgetId}/positions/${positionId}`,
+    payload,
+  );
+  return data;
+}
+
+export async function deleteBudgetPosition(budgetId: number, positionId: number): Promise<void> {
+  await apiClient.delete(`/budget-plans/${budgetId}/positions/${positionId}`);
 }

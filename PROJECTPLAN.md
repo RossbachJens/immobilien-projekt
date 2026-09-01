@@ -2,7 +2,8 @@
 
 ## Grundsatzentscheidungen (festgehalten)
 - **Zugriffskontrolle:** Defense-in-Depth — FastAPI filtert Queries nach Rolle/Zuordnung
-  UND PostgreSQL Row-Level-Security erzwingt dieselbe Regel zusätzlich auf DB-Ebene.
+  UND PostgreSQL Row-Level-Security erzwingt dieselbe Regel zusätzlich auf DB-Ebene
+  (Postgres-RLS steht noch aus, siehe Phase 7).
 - **Erste Vertikale:** Auth/Login (inkl. RLS-Grundgerüst), da Rollenmodell alle
   weiteren Phasen durchzieht.
 - **Frontend-Sprache:** TypeScript von Anfang an (Vite, TanStack Query, React Router, Zod).
@@ -14,6 +15,16 @@
 - **Frontend-Struktur:** Bewusst **kein Monolith** — Feature-Module (`features/<domäne>/`)
   statt einer wachsenden `App.tsx`. Details siehe `frontend/src/` (Phase 0 bereits umgesetzt:
   `api/`, `components/`, `features/`, `layouts/`, `routes/`, `styles/`).
+- **Navigation (Frontend):** Mit dem wachsenden Funktionsumfang ab Phase 4 wurde die
+  Modul-Navigation aus der Kopfzeile (`Navbar`) in eine eigene linke Sidebar
+  (`layouts/Sidebar.tsx`) verschoben — Grund: zu viele gleichrangige Module (Liegenschaften,
+  Einheiten, Eigentümer, Mieter, Buchhaltung, Beschluss-Sammlung, Wirtschaftsplan,
+  Sonderumlagen, ggf. Nutzerverwaltung) passen nicht mehr überschneidungsfrei in eine
+  horizontale Leiste. Die `Navbar` beschränkt sich seitdem auf Logo sowie Nutzer-/
+  Logout-Bereich; `Sidebar` markiert die aktive Route über `NavLink`. Auf schmalen
+  Bildschirmen (`max-width: 768px`) klappt die Sidebar zu einer horizontal scrollbaren
+  Leiste unterhalb der Navbar um, statt eine Off-Canvas-Lösung einzuführen — das hält den
+  Aufwand gering und bleibt konsistent mit dem bestehenden Breakpoint-Muster in `style.css`.
 - **Rollenmodell:** Kein separates globales Rollen-Enum. Rolle ergibt sich aus dem
   Datenmodell: `users.is_admin` → Admin, `users.owner_id` gesetzt → Eigentümer,
   `users.tenant_id` gesetzt → Mieter, sonst Verwalter/Buchhalter (granular über
@@ -34,8 +45,10 @@
   überlappende Zeiträume je Einheit/Schlüsseltyp auf DB-Ebene; die
   01.01.-Regel selbst wird erst in der Service-Schicht durchgesetzt (Phase 5),
   da eine starre CHECK-Constraint rückwirkende historische Datenpflege
-  blockieren würde.
-  - **Eigentümer/Mieter ohne Online-Zugang:** `owners`/`tenants` sind eigenständige
+  blockieren würde. Dasselbe Gültigkeitszeitraum-Muster (statt `is_active`-Flag)
+  wurde später auch für Eigentümerhistorie und reale Bankkonten (Phase 6)
+  übernommen.
+- **Eigentümer/Mieter ohne Online-Zugang:** `owners`/`tenants` sind eigenständige
   Stammdaten-Entitäten ohne Pflicht-Verknüpfung zu einem `users`-Datensatz. Ob ein
   Eigentümer/Mieter online Einblick in seine Daten erhält, ist eine separate,
   jederzeit nachträglich änderbare Entscheidung (`PATCH /users/{id}` mit
@@ -46,6 +59,7 @@
   serverseitig über Postgres' `pgp_sym_encrypt`/`pgp_sym_decrypt` (pgcrypto), der
   Schlüssel geht nur als Bind-Parameter über die DB-Verbindung. `iban_last4`
   wird zusätzlich im Klartext gepflegt (Anzeige ohne Entschlüsselung nötig).
+  Dasselbe Verfahren gilt für die realen Bankkonten je Liegenschaft (Phase 6).
 - **Kontenrahmen (SKR 04) - global + liegenschaftseigen:** `accounts.property_id`
   ist nullable: `NULL` = globales SKR04-Basiskonto (nur per Alembic-Migration/
   Seed-Daten gepflegt, für alle Liegenschaften sichtbar), gesetzt =
@@ -57,35 +71,55 @@
   Deaktivierung statt Hard-Delete (`is_active`), da Individualkonten bereits
   in `entry_lines` referenziert sein können. `GET /accounts?property_id=X`
   liefert global + eigene zusammen (Basis für das Buchungsformular).
+  Ein zusätzliches Flag `is_reserve_account` kennzeichnet liegenschaftseigene
+  Rücklagenkonten, damit sie trotz Kontoart AKTIV (statt AUFWAND) als
+  Wirtschaftsplan-/Sonderumlage-Position zulässig sind (Migration 0003).
 - **Manuelle Buchungen sind ausschließlich liegenschaftsbezogen:** `entry_lines.
   unit_id` wird beim manuellen Erfassen bewusst NICHT gesetzt - die Aufteilung
-  auf Einheiten erfolgt erst in Phase 5 über den Umlageschlüssel im Rahmen der
-  Nebenkostenabrechnung. `unit_id` bleibt im Schema für automatisierte
-  Buchungen reserviert (z.B. Mietsollstellung, `03_procedures.sql`).
+  auf Einheiten erfolgt erst über den Umlageschlüssel im Rahmen von Wirtschaftsplan,
+  Sonderumlage oder Nebenkostenabrechnung. `unit_id` bleibt im Schema zusätzlich für
+  automatisierte Buchungen reserviert (z.B. Mietsollstellung, `03_procedures.sql`).
+- **Gemeinsame Verteilungslogik:** Wirtschaftsplan-Positionen, Sonderumlagen und die
+  Nebenkostenabrechnung verteilen alle einen Gesamtbetrag auf Einheiten nach demselben
+  Prinzip (MEA / Wohnfläche / individueller Umlageschlüssel aus `unit_allocation_keys`).
+  Diese Logik ist zentral in `app/core/allocation.py`
+  (`compute_unit_fractions`, `distribute_amount`) gebündelt statt pro Feature dupliziert;
+  eine Rundungsdifferenz geht an die Einheit mit dem größten Anteil (analog zum
+  Soll=Haben-Prinzip bei Buchungen).
 - **Reale Bankkonten je Liegenschaft (Phase 6):** Trennungsgebot § 27 Abs. 5 WEG -
   jede Liegenschaft braucht mindestens ein Girokonto und mindestens ein
   Rücklagenkonto, real mit eigener IBAN. Eine Liegenschaft kann mehrere
   Rücklagenkonten gleichzeitig haben (z.B. Tagesgeld, Kündigungsgeld, Sparbrief -
-  vgl. Konten 1810/1820/1830 in 04_testdata.sql). Neue Tabelle
+  vgl. Konten 1810/1820/1830 in 04_testdata.sql). Tabelle
   `property_bank_accounts`: property_id (FK, Pflicht), account_id (FK zu
   accounts, SKR04-Kategorie), account_purpose, bank_name, iban_encrypted (wie
-  bei owners/tenants via pgcrypto), iban_last4, ggf. creditor_id für SEPA.
-  1:n-Beziehung Liegenschaft -> Bankkonten.
+  bei owners/tenants via pgcrypto), iban_last4, `valid_from`/`valid_to` statt
+  `is_active`-Flag, mit `EXCLUDE USING gist` gegen überlappende Gültigkeiten -
+  dasselbe Muster wie bei `unit_owner_history`. 1:n-Beziehung Liegenschaft ->
+  Bankkonten.
 - **Beschluss-Sammlung (§ 24 WEG) - append-only:** `resolution_collection`
   bekommt eine gesetzlich vorgeschriebene `lfd_nr` (fortlaufend je
   Liegenschaft, nie wiederverwendet - auch nicht nach Soft-Delete-Korrektur).
   Statusänderungen und Gerichtsentscheidungen zu einem bestehenden Beschluss
   werden nie durch Bearbeiten der Zeile abgebildet, sondern als neuer
   Eintrag mit `refers_to_resolution_id` ("zu lfd. Nr. X") - konsistent mit
-  dem Storno-Prinzip bei `journal_entries`.
-- **Zahlungseingang & Nebenkostenabrechnung (Phase 5):** Zahlungseingänge sind keine eigene Tabelle, sondern automatisiert
-  erzeugte journal_entries (Bank an Forderung, unit_id/lease_id gesetzt – analog 03_procedures.sql) über POST /payments. Die 
-  Nebenkostenabrechnung (settlement_periods/settlement_positions/unit_settlement_shares/unit_settlement_summaries) folgt dem 
-  Wirtschaftsplan-Muster (Entwurf → Beschlossen → Inaktiv, Kopplung an resolution_collection). is_apportionable hängt an der 
-  Position, nicht am Konto. Der PDF-Export (GET /settlement-periods/{id}/units/{id}/export, reportlab) bildet den Kernteil der 
-  Muster-Jahresabrechnung ab – §35a-EStG-Bescheinigung, Rücklagendarstellung/Vermögensaufstellung und eine separate Mieter-
-  Betriebskostenabrechnung sind bewusst nicht umgesetzt (fehlende Kategorisierung/Bestandsführung) und bei Bedarf ein eigener 
-  Folge-Slice.
+  dem Storno-Prinzip bei `journal_entries`. Ein Wirtschaftsplan wird erst mit
+  Verknüpfung zu einem `resolution_id` bindend (Statuswechsel zu "Beschlossen").
+- **Eigentümerversammlungen & Umlaufbeschluss (informell ergänzt):** `owner_meetings`
+  bildet sowohl Präsenzversammlungen als auch Umlaufbeschlüsse über dieselbe
+  Struktur ab (kein separates Modell für Umlaufbeschlüsse), inkl.
+  `meeting_agenda_items` für die Tagesordnung. `resolution_collection.meeting_id`
+  ist nullable und verknüpft optional einen Beschluss mit der Versammlung, in der
+  er gefasst wurde. Einladung und Niederschrift werden serverseitig als PDF
+  generiert (WeasyPrint statt reportlab, da hier textlastiges HTML/CSS-Layout statt
+  tabellarischer Rechenwerke im Vordergrund steht wie bei der Jahresabrechnung).
+- **Nebenkostenabrechnung:** `settlement_periods`/`settlement_positions`/
+  `unit_settlement_shares`/`unit_settlement_summaries` bilden Abrechnungszeitraum,
+  einzelne Kostenpositionen, deren Verteilung je Einheit sowie das
+  Einheiten-Gesamtergebnis ab. Zahlungseingänge werden über einen eigenen
+  Payment-Endpoint auf die Konten 1220 (Hausgeld) bzw. 1200 (Miete) gebucht.
+  PDF-Export je Einheit über `reportlab` (tabellenlastig, orientiert an der
+  Muster-Jahresabrechnung `Einzelabrechnung 2024 Wohnung 4.docx`).
 
 
 ## Architektur
@@ -111,10 +145,16 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
   auszuführen:** Ein neues Modellfeld im ORM (`app/models/...`) ist erst nach
   `docker compose exec backend alembic upgrade head` tatsächlich in der DB
   vorhanden - vorher wirft jeder Zugriff `UndefinedColumn`, obwohl Code und
-  Migration bereits im Repo liegen.
-- **Alembic-Revision-IDs ≤ 32 Zeichen halten — alembic_version.version_num ist standardmäßig VARCHAR(32); eine längere 
-  selbstgewählte Revision-ID führt zu StringDataRightTruncation erst beim finalen Versions-Update, nachdem der DDL-Teil der
-  Migration bereits gelaufen ist (wird aber dank Transaktions-Wrapper in env.py vollständig zurückgerollt).
+  Migration bereits im Repo liegen. `alembic stamp head` markiert eine
+  Migration nur als erledigt, OHNE sie auszuführen.
+- **Alembic-Revision-IDs ≤ 32 Zeichen halten** — `alembic_version.version_num` ist standardmäßig
+  VARCHAR(32); eine längere selbstgewählte Revision-ID führt zu StringDataRightTruncation
+  erst beim finalen Versions-Update, nachdem der DDL-Teil der Migration bereits gelaufen ist
+  (wird aber dank Transaktions-Wrapper in env.py vollständig zurückgerollt). Migrationen, die
+  noch nicht ausgeführt wurden, dürfen dafür in-place überarbeitet werden.
+- **OCR-Extraktion des SKR04-PDF unzuverlässig:** Für `05_skr04_kontenrahmen.sql` wurde jeder
+  Eintrag manuell anhand der Original-Seiten-Scans geprüft statt per automatisierter
+  Volltextextraktion übernommen (mehrspaltiges Tabellenlayout im Original).
 
 
 ## Arbeitsweise ab jetzt (lernorientiert)
@@ -122,6 +162,8 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - Code wird schrittweise gezeigt, nicht als großer Sprung.
 - Neue Konzepte (RLS, JWT, TanStack Query, ...) werden kurz eingeordnet.
 - Rückfragen zum "Warum" werden vor dem nächsten Schritt beantwortet.
+- PROJECTPLAN.md wird von Jens gepflegt; bereits bestätigte Entscheidungen werden von
+  Claude nicht erneut editiert.
 
 ## Phasen
 
@@ -129,41 +171,61 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 |---|-------|--------|---------------|
 | 0 | Setup | Backend-/Frontend-Grundgerüst, Docker Compose, modulare Frontend-Struktur, CI-Basis | — |
 | 1 | Auth & Access Control | Login (E-Mail + Google SSO) für Admin/Verwalter/Eigentümer/Mieter, JWT via httpOnly-Cookie, RLS-Policies, `access_log`-Middleware, Nutzerverwaltung (Anlegen/Bearbeiten/Löschen inkl. Rollenzuweisung) | 0 |
-| 2 | Stammdaten | CRUD für properties/units/owners/tenants, Soft-Delete | 1 |
-| 3 | Buchhaltung | Journal/Entry-Lines, Soll=Haben-Trigger (`02_triggers.sql`), Storno-Flow | 2 |
+| 2 | Stammdaten | CRUD für properties/units/owners/tenants, Soft-Delete, Eigentümerzuordnung je Einheit | 1 |
+| 3 | Buchhaltung | Journal/Entry-Lines, Soll=Haben-Trigger (`02_triggers.sql`), Storno-Flow, Kontenrahmen global + liegenschaftseigen | 2 |
 | 4 | Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung | Wirtschaftspläne je Objekt/Jahr (`budget_plans`, `budget_positions`), Verteilung je Einheit nach MEA/Umlageschlüssel (`unit_budget_shares`), Sonderumlagen (`special_assessments`, `unit_special_assessment_shares`), Beschluss-Sammlung § 24 WEG (`resolution_collection`, dauerhaft aufbewahrt, kein regulärer Soft-Delete-Lifecycle) | 2, 3 |
-| 5 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung (`unit_allocation_keys` mit Gültigkeitszeitraum, Wechsel nur zum 01.01. wirksam), PDF-Export je Einheit (siehe Beispiel „Einzelabrechnung 2024 Wohnung 4") | 3, 4 |
-| 6 | Mietsollstellung & SEPA | `03_procedures.sql`, Pain.008-XML-Export | 3 |
-| 7 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups, Key-Rotation, E2E-Tests | laufend |
+| 5 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung (`unit_allocation_keys` mit Gültigkeitszeitraum, Wechsel nur zum 01.01. wirksam), Zahlungseingang, PDF-Export je Einheit (siehe Beispiel „Einzelabrechnung 2024 Wohnung 4") | 3, 4 |
+| 6 | Reale Bankkonten je Liegenschaft | `property_bank_accounts` (Trennungsgebot § 27 Abs. 5 WEG), Girokonto/Rücklagenkonten mit Gültigkeitszeitraum statt `is_active` | 3 |
+| 7 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups, Key-Rotation, E2E-Tests, PostgreSQL-RLS-Durchsetzung, Google-SSO-Login-Flow, `access_log`-Middleware, produktiver E-Mail-Versand | laufend |
+| 8 | Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt, ursprünglich nicht in der Phasenliste)* | `owner_meetings`, `meeting_agenda_items`, Verknüpfung mit `resolution_collection`, Einladung/Niederschrift als PDF (WeasyPrint), Umlaufbeschluss über dieselbe Struktur | 4 |
+| 9 | Mietsollstellung & SEPA *(verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)* | `03_procedures.sql`, Pain.008-XML-Export | 3 |
+
+> **Hinweis:** Phase 6 wurde inhaltlich von "Mietsollstellung & SEPA" auf "Reale Bankkonten je
+> Liegenschaft" umgewidmet, da das Trennungsgebot (§ 27 Abs. 5 WEG) fachlich früher benötigt
+> wurde. Mietsollstellung/SEPA-Export laufen dafür als eigene, spätere Phase 9. Phase 8
+> (Eigentümerversammlungen) wurde zusätzlich zur ursprünglichen Planung ergänzt, weil sie in
+> der Praxis vor Phase 7 (Härtung) gebraucht wurde.
 
 ## Meilensteine je Phase
 - **Phase 0:** `docker-compose up` startet DB + FastAPI `/health` + React-Grundgerüst mit
   modularer Ordnerstruktur und übernommenem Design. ✅ erledigt
 - **Phase 1:** Vier Test-User (Admin/Verwalter/Eigentümer/Mieter) können sich einloggen
   und erhalten nachweislich unterschiedliche Ergebnismengen auf `/properties` —
-  verifiziert durch einen negativen RLS-Testfall.
+  verifiziert durch einen negativen RLS-Testfall. *(Login/JWT/Nutzerverwaltung ✅, RLS-Testfall offen)*
 - **Phase 2:** Admin/Verwalter legt Objekt + Einheiten an, ordnet Eigentümer zu —
-  vollständig im Frontend.
-- **Phase 3:** Buchung mit Soll≠Haben wird serverseitig zuverlässig abgelehnt (Testfall).
+  vollständig im Frontend. ✅ erledigt
+- **Phase 3:** Buchung mit Soll≠Haben wird serverseitig zuverlässig abgelehnt (Testfall). ✅ erledigt
 - **Phase 4:** Verwalter legt für ein Objekt einen Wirtschaftsplan mit Positionen an; das
   System verteilt die Beträge automatisch je Einheit nach Umlageschlüssel
   (`unit_budget_shares`). Eine Sonderumlage kann einem Beschluss aus der Beschluss-Sammlung
-  zugeordnet und ebenfalls je Einheit verteilt werden.
+  zugeordnet und ebenfalls je Einheit verteilt werden. ✅ erledigt
 - **Phase 5:** Vollständige Betriebskostenabrechnung für ein Testobjekt als PDF (Format
-  orientiert an der Beispiel-Jahresabrechnung im Projekt).
-- **Phase 6:** Gültige Pain.008-Datei für einen Lastschriftlauf.
-- **Phase 7:** Vor Produktivbetrieb abgeschlossen.
+  orientiert an der Beispiel-Jahresabrechnung im Projekt). ✅ Kernfunktion inkl. PDF-Export
+  erledigt; Zahlungseingang-UI und Umlageschlüssel-CRUD-UI im Frontend sowie ggf. einzelne
+  Berechnungs-Slices (ab 5.3) noch offen.
+- **Phase 6:** Jede Liegenschaft verfügt über mindestens ein Giro- und ein Rücklagenkonto mit
+  eigener IBAN und Gültigkeitszeitraum. ✅ erledigt
+- **Phase 7:** Vor Produktivbetrieb abgeschlossen. *(offen)*
+- **Phase 8:** Eine Eigentümerversammlung kann angelegt, Einladung und Niederschrift als PDF
+  erzeugt und Beschlüsse daraus in die Beschluss-Sammlung übernommen werden; ein
+  Umlaufbeschluss läuft über dieselbe Struktur. ✅ erledigt
+- **Phase 9:** Gültige Pain.008-Datei für einen Lastschriftlauf. *(offen)*
 
 
 ## Status
 - [x] Datenbankschema (`01_schema.sql`) inkl. DSGVO-Maßnahmen
 - [x] Phase 0 — Setup
-- [ ] Phase 1 — Auth & Access Control *(Login, JWT, Nutzerverwaltung inkl. Rollenzuweisung ✅; RLS-Policies & `access_log`-Middleware offen)*
-- [ ] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung ✅; Frontend für Units/Owners/Tenants offen)*
+- [ ] Phase 1 — Auth & Access Control *(Login, JWT, Nutzerverwaltung inkl. Rollenzuweisung ✅; RLS-Policies, `access_log`-Middleware und Google-SSO-Login-Flow offen)*
+- [x] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung sowie Frontend für Properties/Units/Owners/Tenants ✅)*
 - [x] Phase 3 — Buchhaltung *(Kontenrahmen global + liegenschaftseigen, Journal-Erfassung mit Soll=Haben-Trigger, Storno-Flow, Frontend inkl. Kontenverwaltung je Liegenschaft ✅)*
-- [ ] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung
-- [x] Phase 5 — Nebenkostenabrechnung *(Datenmodell, Zahlungseingang, Ist-Kosten-Ermittlung & Verteilung nach Umlageschlüssel,
- Beschluss-Kopplung, PDF-Export je Einheit ✅; §35a-Bescheinigung, Rücklagendarstellung/Vermögensaufstellung, Wirtschaftsplan-
- Spalte in derselben Abrechnung und Mieter-Betriebskostenabrechnung nicht abgebildet)*
-- [ ] Phase 6 — Mietsollstellung & SEPA
-- [ ] Phase 7 — Härtung & Betrieb
+- [x] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung *(Backend + Frontend ✅)*
+- [ ] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export ✅; Zahlungseingang-UI, Umlageschlüssel-CRUD-UI und ggf. einzelne Berechnungs-Slices ab 5.3 offen)*
+- [x] Phase 6 — Reale Bankkonten je Liegenschaft *(`property_bank_accounts` mit Gültigkeitszeitraum ✅)*
+- [ ] Phase 7 — Härtung & Betrieb *(offen: RLS-Durchsetzung, Google-SSO-Flow, `access_log`-Middleware, produktiver E-Mail-Versand, Rate-Limiting, Backups, Key-Rotation, E2E-Tests)*
+- [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅)*
+- [ ] Phase 9 — Mietsollstellung & SEPA *(offen, verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)*
+
+### Bewusst zurückgestellt (kein eigener Phasen-Slot)
+- § 35a EStG-Bescheinigung (Haushaltsnahe Dienstleistungen/Handwerkerleistungen)
+- Rücklagendarstellung und Vermögensaufstellung
+- Mieterseitige Betriebskostenabrechnung (aktuell nur eigentümerseitige Nebenkostenabrechnung)

@@ -4,12 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createBudgetPlan,
   createBudgetPosition,
+  deleteBudgetPosition,
   listBudgetPlans,
   listBudgetPositions,
-  updateBudgetPlanStatus,
+  updateBudgetPlan,
+  updateBudgetPosition,
   type BudgetPlanPayload,
-  type BudgetPlanStatus,
+  type BudgetPlanStatusPayload,
   type BudgetPositionPayload,
+  type BudgetPositionUpdatePayload,
 } from "./api";
 
 const plansKey = (propertyId?: number) => ["budget-plans", propertyId ?? "all"];
@@ -31,7 +34,6 @@ export function useCreateBudgetPlan(propertyId: number) {
   });
 }
 
-// frontend/src/features/budgetPlans/useBudgetPlans.ts — useUpdateBudgetPlanStatus ersetzen
 export function useUpdateBudgetPlan(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -53,6 +55,23 @@ export function useCreateBudgetPosition(budgetId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: BudgetPositionPayload) => createBudgetPosition(budgetId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: positionsKey(budgetId) }),
+  });
+}
+
+export function useUpdateBudgetPosition(budgetId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ positionId, payload }: { positionId: number; payload: BudgetPositionUpdatePayload }) =>
+      updateBudgetPosition(budgetId, positionId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: positionsKey(budgetId) }),
+  });
+}
+
+export function useDeleteBudgetPosition(budgetId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (positionId: number) => deleteBudgetPosition(budgetId, positionId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: positionsKey(budgetId) }),
   });
 }

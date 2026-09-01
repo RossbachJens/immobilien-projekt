@@ -56,6 +56,20 @@ class BudgetPositionCreate(BaseModel):
     allocation_key_type: str = Field(min_length=1, max_length=50)
 
 
+class BudgetPositionUpdate(BaseModel):
+    """PATCH-Semantik wie bei OwnerUpdate/TenantUpdate - nur tatsächlich
+    mitgeschickte Felder werden geändert (siehe model_dump(exclude_unset=True)
+    im Router). Nur zulässig, solange der zugehörige Plan im Status
+    "Entwurf" ist - danach ist eine Position "bis zum Beschluss" bearbeitbar,
+    nicht mehr danach (siehe Router-Logik). Bei jeder Änderung wird die
+    Verteilung auf Einheiten (unit_budget_shares) komplett neu berechnet."""
+
+    account_id: int | None = None
+    description: str | None = Field(default=None, max_length=150)
+    planned_amount: float | None = Field(default=None, ge=0)
+    allocation_key_type: str | None = Field(default=None, min_length=1, max_length=50)
+
+
 class BudgetPositionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

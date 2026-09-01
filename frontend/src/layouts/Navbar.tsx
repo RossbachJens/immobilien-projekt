@@ -4,6 +4,12 @@ import { Link } from "react-router-dom";
 import { useCurrentUser, useLogout } from "../features/auth/useAuth";
 import "./Navbar.css";
 
+/**
+ * Reine Kopfzeile: Logo + Nutzer-/Logout-Bereich. Die frühere
+ * Modul-Navigation (`<nav>` mit den Feature-Links) sitzt seit Phase 4 in
+ * der linken Sidebar (siehe Sidebar.tsx) - zu viele gleichrangige Module
+ * für eine horizontale Leiste, siehe PROJECTPLAN.md.
+ */
 export function Navbar() {
   const { data: user } = useCurrentUser();
   const logoutMutation = useLogout();
@@ -14,22 +20,6 @@ export function Navbar() {
         <Link to="/" className="navbar__logo">
           Immobilien- &amp; WEG-Verwaltung
         </Link>
-{user && (
-  <nav className="navbar__links">
-    <Link to="/properties">Liegenschaften</Link>
-    <Link to="/units">Einheiten</Link>
-    <Link to="/owners">Eigentümer</Link>
-    <Link to="/tenants">Mieter</Link>
-    <Link to="/journal-entries">Buchhaltung</Link>
-    <Link to="/resolutions">Beschluss-Sammlung</Link>
-    <Link to="/budget-plans">Wirtschaftsplan</Link>
-    <Link to="/special-assessments">Sonderumlagen</Link>
-    <Link to="/settlement-periods">Nebenkostenabrechnung</Link>
-    {user.is_admin && <Link to="/users">Nutzerverwaltung</Link>}
-    <Link to="/bank-accounts">Bankkonten</Link>
-    <Link to="/meetings">Versammlungen</Link>
-  </nav>
-)}
         {user && (
           <div className="navbar__user">
             <span>{user.name}</span>

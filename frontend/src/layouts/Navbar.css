@@ -4,24 +4,19 @@
   height: 70px;
 }
 
-/* frontend/src/layouts/Navbar.css — .navbar__inner ersetzen */
 .navbar__inner {
-  /* max-width: 1100px; margin: 0 auto; entfernt - Inhalt füllt jetzt die
-     volle Fensterbreite, statt in einer zentrierten 1100px-Box zu sitzen. */
-  width: 100%;
+  max-width: 1400px;
   height: 100%;
+  margin: 0 auto;
   padding: 0 var(--space-3);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
 }
 
 .navbar__logo {
-  flex-shrink: 0;
-}
-.navbar__logo {
   font-size: 1.5rem;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .navbar__user {
@@ -41,18 +36,3 @@
   padding: 0.3rem 0.8rem;
   cursor: pointer;
 }
-.navbar__links {
-  display: flex;
-  gap: var(--space-2);
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.navbar__links a {
-  color: var(--color-white);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-
-
