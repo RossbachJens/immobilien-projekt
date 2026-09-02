@@ -4,17 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSettlementPeriod,
   createSettlementPosition,
+  deleteSettlementPosition,
+  exportUnitSettlementPdf,
   listSettlementPeriods,
   listSettlementPositions,
   listUnitSummaries,
   recalculateSettlement,
   updateSettlementPeriod,
+  updateSettlementPosition,
   type SettlementPeriodPayload,
   type SettlementPositionPayload,
+  type SettlementPositionUpdatePayload,
   type SettlementStatusPayload,
 } from "./api";
-
-import { exportUnitSettlementPdf } from "./api";
 
 const periodsKey = (propertyId?: number) => ["settlement-periods", propertyId ?? "all"];
 const positionsKey = (settlementId: number) => ["settlement-periods", settlementId, "positions"];
@@ -57,6 +59,29 @@ export function useCreateSettlementPosition(settlementId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: SettlementPositionPayload) => createSettlementPosition(settlementId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
+      queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });
+    },
+  });
+}
+
+export function useUpdateSettlementPosition(settlementId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ positionId, payload }: { positionId: number; payload: SettlementPositionUpdatePayload }) =>
+      updateSettlementPosition(settlementId, positionId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
+      queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });
+    },
+  });
+}
+
+export function useDeleteSettlementPosition(settlementId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (positionId: number) => deleteSettlementPosition(settlementId, positionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
       queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });

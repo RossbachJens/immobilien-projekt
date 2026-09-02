@@ -54,6 +54,18 @@ export interface SettlementPositionPayload {
   is_apportionable: boolean;
 }
 
+// Bewusst dieselben Felder wie SettlementPositionPayload, aber alle optional
+// - Positionen sind nur "bis zum Beschluss" (Abrechnungs-Status "Entwurf")
+// änderbar, siehe app/routers/settlement_periods.py::update_settlement_position.
+// actual_amount ist absichtlich nicht enthalten - der Ist-Betrag wird beim
+// Speichern serverseitig automatisch neu aus den Buchungen ermittelt.
+export interface SettlementPositionUpdatePayload {
+  account_id?: number;
+  description?: string | null;
+  allocation_key_type?: string;
+  is_apportionable?: boolean;
+}
+
 export interface UnitSettlementSummary {
   summary_id: number;
   settlement_id: number;
@@ -99,6 +111,22 @@ export async function createSettlementPosition(
   return data;
 }
 
+export async function updateSettlementPosition(
+  settlementId: number,
+  positionId: number,
+  payload: SettlementPositionUpdatePayload,
+): Promise<SettlementPosition> {
+  const { data } = await apiClient.patch<SettlementPosition>(
+    `/settlement-periods/${settlementId}/positions/${positionId}`,
+    payload,
+  );
+  return data;
+}
+
+export async function deleteSettlementPosition(settlementId: number, positionId: number): Promise<void> {
+  await apiClient.delete(`/settlement-periods/${settlementId}/positions/${positionId}`);
+}
+
 export async function recalculateSettlement(settlementId: number): Promise<SettlementPosition[]> {
   const { data } = await apiClient.post<SettlementPosition[]>(`/settlement-periods/${settlementId}/recalculate`);
   return data;
@@ -109,7 +137,6 @@ export async function listUnitSummaries(settlementId: number): Promise<UnitSettl
   return data;
 }
 
-// frontend/src/features/settlementPeriods/api.ts — ergänzen
 export async function exportUnitSettlementPdf(settlementId: number, unitId: number): Promise<Blob> {
   const { data } = await apiClient.get(`/settlement-periods/${settlementId}/units/${unitId}/export`, {
     responseType: "blob",

@@ -18,8 +18,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/resolutions", label: "Beschluss-Sammlung" },
   { to: "/budget-plans", label: "Wirtschaftsplan" },
   { to: "/special-assessments", label: "Sonderumlagen" },
+  { to: "/settlement-periods", label: "Nebenkostenabrechnung" },
+  { to: "/bank-accounts", label: "Bankkonten" },
   { to: "/meetings", label: "Versammlungen" },
-  { to: "/documents", label: "Dokumente" }
 ];
 
 /**

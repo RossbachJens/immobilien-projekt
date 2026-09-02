@@ -13,12 +13,14 @@ import { SettlementPositionForm } from "./SettlementPositionForm";
 import {
   useCreateSettlementPeriod,
   useCreateSettlementPosition,
+  useDeleteSettlementPosition,
   useExportUnitSettlement,
   useRecalculateSettlement,
   useSettlementPeriods,
   useSettlementPositions,
   useUnitSummaries,
   useUpdateSettlementPeriod,
+  useUpdateSettlementPosition,
 } from "./useSettlementPeriods";
 import "./SettlementPeriodsPage.css";
 
@@ -254,21 +256,53 @@ function SettlementPeriodDetails({
   const { data: positions, isLoading: positionsLoading } = useSettlementPositions(settlementId);
   const { data: summaries, isLoading: summariesLoading } = useUnitSummaries(settlementId);
   const createPositionMutation = useCreateSettlementPosition(settlementId);
+  const updatePositionMutation = useUpdateSettlementPosition(settlementId);
+  const deletePositionMutation = useDeleteSettlementPosition(settlementId);
   const recalculateMutation = useRecalculateSettlement(settlementId);
   const exportMutation = useExportUnitSettlement();
 
-  const [showForm, setShowForm] = useState(false);
+  // Positionen sind bewusst nur "bis zum Beschluss" (Abrechnungs-Status
+  // "Entwurf") änderbar - danach Teil der beschlossenen Jahresabrechnung.
+  const isDraft = periodStatus === "Entwurf";
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingPositionId, setEditingPositionId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   function handleCreate(payload: SettlementPositionPayload) {
     setFormError(null);
     createPositionMutation.mutate(payload, {
-      onSuccess: () => setShowForm(false),
+      onSuccess: () => setShowCreateForm(false),
       onError: () =>
         setFormError(
           "Position konnte nicht angelegt werden - Verteilerschlüssel eventuell für keine Einheit gültig.",
         ),
     });
+  }
+
+  function handleUpdate(positionId: number, payload: SettlementPositionPayload) {
+    setFormError(null);
+    updatePositionMutation.mutate(
+      { positionId, payload },
+      {
+        onSuccess: () => setEditingPositionId(null),
+        onError: () =>
+          setFormError(
+            "Position konnte nicht aktualisiert werden - Verteilerschlüssel eventuell für keine Einheit gültig.",
+          ),
+      },
+    );
+  }
+
+  function handleDelete(positionId: number) {
+    if (!window.confirm("Diese Position wirklich löschen?")) return;
+    deletePositionMutation.mutate(positionId);
+  }
+
+  function startEditing(positionId: number) {
+    setFormError(null);
+    setShowCreateForm(false);
+    setEditingPositionId(positionId);
   }
 
   function handleExport(unitId: number) {
@@ -287,41 +321,64 @@ function SettlementPeriodDetails({
       {positionsLoading && <p>Lädt Positionen…</p>}
       {!positionsLoading && positions?.length === 0 && <p>Noch keine Positionen erfasst.</p>}
 
-      {positions?.map((position) => (
-        <details key={position.position_id} className="settlement-period-details__position">
-          <summary>
-            {position.description ?? accountLabelFor(position.account_id)} · {position.actual_amount.toFixed(2)} € ·{" "}
-            {position.allocation_key_type}
-            {!position.is_apportionable && " · nicht umlagefähig"}
-          </summary>
-          <p className="settlement-period-details__account">Konto: {accountLabelFor(position.account_id)}</p>
-          <table className="settlement-period-details__shares-table">
-            <thead>
-              <tr>
-                <th>Einheit</th>
-                <th>Anteiliger Betrag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {position.unit_shares.map((share) => (
-                <tr key={share.share_id}>
-                  <td>{unitLabelFor(share.unit_id)}</td>
-                  <td>{share.allocated_actual_amount.toFixed(2)} €</td>
+      {positions?.map((position) =>
+        editingPositionId === position.position_id ? (
+          <SettlementPositionForm
+            key={position.position_id}
+            propertyId={propertyId}
+            initialValues={position}
+            submitLabel="Speichern"
+            onSubmit={(payload) => handleUpdate(position.position_id, payload)}
+            onCancel={() => setEditingPositionId(null)}
+            isSubmitting={updatePositionMutation.isPending}
+            error={formError}
+          />
+        ) : (
+          <details key={position.position_id} className="settlement-period-details__position">
+            <summary>
+              {position.description ?? accountLabelFor(position.account_id)} · {position.actual_amount.toFixed(2)} € ·{" "}
+              {position.allocation_key_type}
+              {!position.is_apportionable && " · nicht umlagefähig"}
+            </summary>
+            <p className="settlement-period-details__account">Konto: {accountLabelFor(position.account_id)}</p>
+            <table className="settlement-period-details__shares-table">
+              <thead>
+                <tr>
+                  <th>Einheit</th>
+                  <th>Anteiliger Betrag</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-      ))}
+              </thead>
+              <tbody>
+                {position.unit_shares.map((share) => (
+                  <tr key={share.share_id}>
+                    <td>{unitLabelFor(share.unit_id)}</td>
+                    <td>{share.allocated_actual_amount.toFixed(2)} €</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {isDraft && (
+              <div className="settlement-period-details__position-actions">
+                <button type="button" onClick={() => startEditing(position.position_id)}>
+                  Bearbeiten
+                </button>
+                <button type="button" onClick={() => handleDelete(position.position_id)}>
+                  Löschen
+                </button>
+              </div>
+            )}
+          </details>
+        ),
+      )}
 
       {positions && positions.length > 0 && (
         <p className="settlement-period-details__total">Summe Ist-Kosten: {totalActual.toFixed(2)} €</p>
       )}
 
-      {periodStatus === "Entwurf" && (
+      {isDraft && (
         <div className="settlement-period-details__actions">
-          {!showForm && (
-            <button type="button" onClick={() => setShowForm(true)}>
+          {!showCreateForm && editingPositionId === null && (
+            <button type="button" onClick={() => setShowCreateForm(true)}>
               Neue Position
             </button>
           )}
@@ -335,17 +392,17 @@ function SettlementPeriodDetails({
           </button>
         </div>
       )}
-      {periodStatus !== "Entwurf" && (
+      {!isDraft && (
         <p className="settlement-period-details__locked">
           Abrechnung ist "{periodStatus}" - Positionen können nicht mehr geändert werden.
         </p>
       )}
 
-      {showForm && (
+      {showCreateForm && (
         <SettlementPositionForm
           propertyId={propertyId}
           onSubmit={handleCreate}
-          onCancel={() => setShowForm(false)}
+          onCancel={() => setShowCreateForm(false)}
           isSubmitting={createPositionMutation.isPending}
           error={formError}
         />
