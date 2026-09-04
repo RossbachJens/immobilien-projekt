@@ -116,3 +116,8 @@
   cursor: pointer;
   font-size: 0.85rem;
 }
+/* frontend/src/features/resolutions/ResolutionsPage.css — ergänzen */
+.resolutions-page__votes {
+  color: #555;
+  font-size: 0.85rem;
+}

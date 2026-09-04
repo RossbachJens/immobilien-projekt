@@ -1,0 +1,59 @@
+/* frontend/src/features/meetings/MeetingForm.css */
+.meeting-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 420px;
+}
+
+.meeting-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.meeting-form input,
+.meeting-form select,
+.meeting-form textarea {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.meeting-form__error {
+  color: var(--color-error);
+}
+
+.meeting-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.meeting-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.meeting-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.meeting-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}
+/* frontend/src/features/meetings/MeetingsPage.css — ergänzen */
+.meetings-page__minutes-form h4 {
+  margin-bottom: 0.2rem;
+}
+
+.meetings-page__minutes-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}

@@ -16,6 +16,12 @@ export interface Meeting {
   status: MeetingStatus;
   created_by: number | null;
   created_at: string;
+  chairperson: string | null;
+  minute_taker: string | null;
+  end_time: string | null;
+  represented_shares: number | null;
+  quorum_met: boolean | null;
+  voting_key: string | null;
 }
 
 export interface MeetingPayload {
@@ -36,6 +42,12 @@ export interface MeetingUpdatePayload {
   agenda_intro?: string | null;
   minutes_text?: string | null;
   status?: MeetingStatus;
+  chairperson?: string | null;
+  minute_taker?: string | null;
+  end_time?: string | null;
+  represented_shares?: number | null;
+  quorum_met?: boolean | null;
+  voting_key?: string | null;
 }
 
 export interface AgendaItem {
@@ -44,12 +56,20 @@ export interface AgendaItem {
   position: number;
   title: string;
   description: string | null;
+  protocol_text: string | null;
 }
 
 export interface AgendaItemPayload {
   position: number;
   title: string;
   description?: string | null;
+}
+
+export interface AgendaItemUpdatePayload {
+  position?: number;
+  title?: string;
+  description?: string | null;
+  protocol_text?: string | null;
 }
 
 export async function listMeetings(propertyId?: number): Promise<Meeting[]> {
@@ -76,6 +96,15 @@ export async function listAgendaItems(meetingId: number): Promise<AgendaItem[]> 
 
 export async function createAgendaItem(meetingId: number, payload: AgendaItemPayload): Promise<AgendaItem> {
   const { data } = await apiClient.post<AgendaItem>(`/meetings/${meetingId}/agenda-items`, payload);
+  return data;
+}
+
+export async function updateAgendaItem(
+  meetingId: number,
+  itemId: number,
+  payload: AgendaItemUpdatePayload,
+): Promise<AgendaItem> {
+  const { data } = await apiClient.patch<AgendaItem>(`/meetings/${meetingId}/agenda-items/${itemId}`, payload);
   return data;
 }
 

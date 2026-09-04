@@ -1,7 +1,7 @@
 # backend/app/models/meetings.py
 from datetime import date, datetime, time
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -32,6 +32,15 @@ class OwnerMeeting(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # Kopfdaten der Niederschrift (erst NACH der Versammlung bekannt, siehe
+    # Migration 0007) - werden zusammen mit minutes_text im Nachgang gepflegt.
+    chairperson: Mapped[str | None] = mapped_column(String(150))
+    minute_taker: Mapped[str | None] = mapped_column(String(150))
+    end_time: Mapped[time | None]
+    represented_shares: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    quorum_met: Mapped[bool | None]
+    voting_key: Mapped[str | None] = mapped_column(String(100))
+
 
 class MeetingAgendaItem(Base):
     __tablename__ = "meeting_agenda_items"
@@ -43,3 +52,10 @@ class MeetingAgendaItem(Base):
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    # Text für die Niederschrift (was tatsächlich besprochen wurde bzw. der
+    # Verlaufstext VOR einer Beschlussfassung) - bewusst getrennt von
+    # 'description' (Ankündigungstext, VOR der Versammlung in der Einladung
+    # verwendet). Der eigentliche Beschlusstext kommt NICHT von hier, sondern
+    # aus resolution_collection.description (siehe app/routers/meetings.py).
+    protocol_text: Mapped[str | None] = mapped_column(Text)

@@ -11,8 +11,8 @@ from app.db.session import get_db
 from app.models.stammdaten import Owner, Property, User
 from app.models.wirtschaftsplan import ResolutionCollection
 from app.schemas.resolutions import ResolutionCreate, ResolutionOut
-# backend/app/routers/resolutions.py — Import + Validierung ergänzen
-from app.models.meetings import OwnerMeeting
+# Import ergänzen (bereits vorhandene Import-Zeile für OwnerMeeting erweitern):
+from app.models.meetings import MeetingAgendaItem, OwnerMeeting
 
 router = APIRouter(prefix="/resolutions", tags=["resolutions"])
 
@@ -60,6 +60,12 @@ def _next_lfd_nr(db: Session, property_id: int) -> int:
     )
     return (current_max or 0) + 1
 
+def _validate_agenda_item(db: Session, agenda_item_id: int, meeting_id: int) -> None:
+    item = db.get(MeetingAgendaItem, agenda_item_id)
+    if item is None or item.meeting_id != meeting_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Tagesordnungspunkt gehört nicht zur angegebenen Versammlung."
+        )
 
 @router.get("", response_model=list[ResolutionOut])
 def list_resolutions(
@@ -108,12 +114,20 @@ def create_resolution(
     # in create_resolution, direkt nach der refers_to_resolution_id-Prüfung ergänzen:
     if payload.meeting_id is not None:
         _validate_meeting(db, payload.meeting_id, payload.property_id)
-
+    
     resolution = ResolutionCollection(
         **payload.model_dump(),
         lfd_nr=_next_lfd_nr(db, payload.property_id),
         created_by=current_user.user_id,
     )
+    if payload.agenda_item_id is not None:
+        if payload.meeting_id is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "agenda_item_id setzt eine verknüpfte Versammlung (meeting_id) voraus.",
+            )
+        _validate_agenda_item(db, payload.agenda_item_id, payload.meeting_id)
+    
     db.add(resolution)
     try:
         db.commit()

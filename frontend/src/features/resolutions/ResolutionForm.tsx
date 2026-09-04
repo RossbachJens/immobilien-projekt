@@ -2,14 +2,14 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
-import type { Resolution, ResolutionPayload } from "./api";
-// frontend/src/features/resolutions/ResolutionForm.tsx — Props + Feld ergänzen
 import type { Meeting } from "../meetings/api";
+import { useAgendaItems } from "../meetings/useMeetings";
+import type { Resolution, ResolutionPayload } from "./api";
 import "./ResolutionForm.css";
 
 interface ResolutionFormProps {
   propertyId: number;
-  meetings?: Meeting[];   // NEU
+  meetings?: Meeting[];
   referencedResolution?: Resolution;
   submitLabel: string;
   onSubmit: (payload: ResolutionPayload) => void;
@@ -29,6 +29,7 @@ const MEETING_TYPES = [
 ];
 
 const STATUS_SUGGESTIONS = [
+  "einstimmig angenommen",
   "angenommen",
   "abgelehnt",
   "bestandskräftig",
@@ -65,7 +66,18 @@ export function ResolutionForm({
   const [courtDecisionDate, setCourtDecisionDate] = useState("");
   const [courtRulingText, setCourtRulingText] = useState("");
   const [courtParties, setCourtParties] = useState("");
-    const [meetingId, setMeetingId] = useState<number | "">("");
+  const [meetingId, setMeetingId] = useState<number | "">("");
+  const [agendaItemId, setAgendaItemId] = useState<number | "">("");
+  const [votesYes, setVotesYes] = useState("");
+  const [votesNo, setVotesNo] = useState("");
+  const [votesAbstain, setVotesAbstain] = useState("");
+
+  const { data: agendaItems } = useAgendaItems(meetingId !== "" ? meetingId : undefined);
+
+  function handleMeetingChange(value: number | "") {
+    setMeetingId(value);
+    setAgendaItemId("");
+  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -84,17 +96,23 @@ export function ResolutionForm({
       court_ruling_text: showCourtFields ? courtRulingText || null : null,
       court_parties: showCourtFields ? courtParties || null : null,
       refers_to_resolution_id: referencedResolution?.resolution_id ?? null,
-      meeting_id: meetingId !== "" ? meetingId : null,  // NEU
+      meeting_id: meetingId !== "" ? meetingId : null,
+      agenda_item_id: !isFollowUp && agendaItemId !== "" ? agendaItemId : null,
+      votes_yes: !isFollowUp && votesYes !== "" ? Number(votesYes) : null,
+      votes_no: !isFollowUp && votesNo !== "" ? Number(votesNo) : null,
+      votes_abstain: !isFollowUp && votesAbstain !== "" ? Number(votesAbstain) : null,
     });
   }
-  
 
   return (
     <form onSubmit={handleSubmit} className="resolution-form">
-            {meetings && meetings.length > 0 && (
+      {meetings && meetings.length > 0 && (
         <label>
           Zugehörige Versammlung
-          <select value={meetingId} onChange={(e) => setMeetingId(e.target.value ? Number(e.target.value) : "")}>
+          <select
+            value={meetingId}
+            onChange={(e) => handleMeetingChange(e.target.value ? Number(e.target.value) : "")}
+          >
             <option value="">– keine –</option>
             {meetings.map((m) => (
               <option key={m.meeting_id} value={m.meeting_id}>
@@ -104,6 +122,24 @@ export function ResolutionForm({
           </select>
         </label>
       )}
+
+      {!isFollowUp && meetingId !== "" && agendaItems && agendaItems.length > 0 && (
+        <label>
+          Tagesordnungspunkt
+          <select
+            value={agendaItemId}
+            onChange={(e) => setAgendaItemId(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">– kein TOP zugeordnet –</option>
+            {agendaItems.map((item) => (
+              <option key={item.item_id} value={item.item_id}>
+                TOP {item.position} – {item.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {isFollowUp && (
         <p className="resolution-form__reference">
           Folgeeintrag zu lfd. Nr. {referencedResolution.lfd_nr} – „{referencedResolution.title}“
@@ -141,22 +177,56 @@ export function ResolutionForm({
             />
           </label>
           <label>
-            TOP (Tagesordnungspunkt)
+            TOP (Tagesordnungspunkt, Freitext)
             <input value={agendaItem} onChange={(e) => setAgendaItem(e.target.value)} placeholder="z.B. TOP 4" />
           </label>
           <label>
             Beschlusswortlaut
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
           </label>
+
+          <fieldset className="resolution-form__votes">
+            <legend>Abstimmungsergebnis (optional)</legend>
+            <label>
+              JA-Stimmen
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={votesYes}
+                onChange={(e) => setVotesYes(e.target.value)}
+              />
+            </label>
+            <label>
+              NEIN-Stimmen
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={votesNo}
+                onChange={(e) => setVotesNo(e.target.value)}
+              />
+            </label>
+            <label>
+              Enthaltungen
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={votesAbstain}
+                onChange={(e) => setVotesAbstain(e.target.value)}
+              />
+            </label>
+          </fieldset>
         </>
       )}
 
       <label>
-        Vermerke
+        Vermerke (Beschlussstatus)
         <input
           value={statusNote}
           onChange={(e) => setStatusNote(e.target.value)}
-          placeholder="z.B. angenommen"
+          placeholder="z.B. einstimmig angenommen"
           list="resolution-status-suggestions"
         />
       </label>

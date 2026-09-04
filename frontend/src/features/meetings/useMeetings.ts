@@ -7,8 +7,10 @@ import {
   deleteAgendaItem,
   listAgendaItems,
   listMeetings,
+  updateAgendaItem,
   updateMeeting,
   type AgendaItemPayload,
+  type AgendaItemUpdatePayload,
   type MeetingPayload,
   type MeetingUpdatePayload,
 } from "./api";
@@ -42,14 +44,29 @@ export function useUpdateMeeting(propertyId: number) {
   });
 }
 
-export function useAgendaItems(meetingId: number) {
-  return useQuery({ queryKey: agendaItemsKey(meetingId), queryFn: () => listAgendaItems(meetingId) });
+// Optional, da ResolutionForm die TOP-Liste erst nach Auswahl einer
+// Versammlung laden kann (meetingId dort anfangs "").
+export function useAgendaItems(meetingId: number | undefined) {
+  return useQuery({
+    queryKey: agendaItemsKey(meetingId ?? -1),
+    queryFn: () => listAgendaItems(meetingId as number),
+    enabled: meetingId !== undefined,
+  });
 }
 
 export function useCreateAgendaItem(meetingId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: AgendaItemPayload) => createAgendaItem(meetingId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: agendaItemsKey(meetingId) }),
+  });
+}
+
+export function useUpdateAgendaItem(meetingId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: number; payload: AgendaItemUpdatePayload }) =>
+      updateAgendaItem(meetingId, itemId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: agendaItemsKey(meetingId) }),
   });
 }

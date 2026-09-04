@@ -1,0 +1,140 @@
+/* frontend/src/features/allocationKeys/AllocationKeysPage.css */
+.allocation-keys-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.allocation-keys-page__hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.allocation-keys-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.allocation-keys-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.allocation-keys-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.allocation-keys-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.allocation-keys-page__list {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.allocation-keys-page__group {
+  border: 1px solid #eee;
+  border-radius: var(--radius-card);
+  padding: var(--space-1);
+}
+
+.allocation-keys-page__group-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.allocation-keys-page__group-row button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.allocation-keys-page__entries-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.allocation-keys-page__entries-table th,
+.allocation-keys-page__entries-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.allocation-keys-page__close-form {
+  margin-top: 0.6rem;
+  padding: 0.6rem;
+  background-color: var(--color-light);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 240px;
+}
+
+.allocation-keys-page__close-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.allocation-keys-page__close-form input {
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.allocation-keys-page__error {
+  color: var(--color-error);
+}
+
+.allocation-keys-page__close-form-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.allocation-keys-page__close-form-actions button {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.allocation-keys-page__close-form-actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.allocation-keys-page__close-form-actions button[type="button"] {
+  background-color: var(--color-white);
+  border: 1px solid #ccc;
+}

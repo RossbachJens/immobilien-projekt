@@ -12,6 +12,11 @@ export interface Resolution {
   meeting_location: string | null;
   agenda_item: string | null;
   proposed_by_owner_id: number | null;
+  meeting_id: number | null;
+  agenda_item_id: number | null;
+  votes_yes: number | null;
+  votes_no: number | null;
+  votes_abstain: number | null;
   court_name: string | null;
   court_case_number: string | null;
   court_decision_date: string | null;
@@ -21,7 +26,6 @@ export interface Resolution {
   created_by: number | null;
   refers_to_resolution_id: number | null;
   created_at: string;
-  meeting_id: number | null;
 }
 
 export interface ResolutionPayload {
@@ -40,6 +44,10 @@ export interface ResolutionPayload {
   status_note?: string | null;
   refers_to_resolution_id?: number | null;
   meeting_id?: number | null;
+  agenda_item_id?: number | null;
+  votes_yes?: number | null;
+  votes_no?: number | null;
+  votes_abstain?: number | null;
 }
 
 export async function listResolutions(propertyId?: number): Promise<Resolution[]> {

@@ -58,6 +58,12 @@ class ResolutionCollection(Base):
     meeting_location: Mapped[str | None]
     agenda_item: Mapped[str | None]
     proposed_by_owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
+    meeting_id: Mapped[int | None] = mapped_column(ForeignKey("owner_meetings.meeting_id"))
+    # NEU — nach der bestehenden meeting_id-Zeile einfügen:
+    agenda_item_id: Mapped[int | None] = mapped_column(ForeignKey("meeting_agenda_items.item_id"))
+    votes_yes: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    votes_no: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    votes_abstain: Mapped[float | None] = mapped_column(Numeric(10, 2))
     court_name: Mapped[str | None]
     court_case_number: Mapped[str | None]
     court_decision_date: Mapped[date | None]

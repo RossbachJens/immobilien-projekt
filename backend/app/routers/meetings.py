@@ -15,7 +15,14 @@ from app.core.roles import resolve_role
 from app.db.session import get_db
 from app.models.meetings import MeetingAgendaItem, OwnerMeeting
 from app.models.stammdaten import Property, User
-from app.schemas.meetings import AgendaItemCreate, AgendaItemOut, MeetingCreate, MeetingOut, MeetingUpdate
+from app.schemas.meetings import (
+    AgendaItemCreate,
+    AgendaItemOut,
+    AgendaItemUpdate,
+    MeetingCreate,
+    MeetingOut,
+    MeetingUpdate,
+)
 from app.models.wirtschaftsplan import ResolutionCollection
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
@@ -154,6 +161,44 @@ def create_agenda_item(
     return item
 
 
+@router.patch("/{meeting_id}/agenda-items/{item_id}", response_model=AgendaItemOut)
+def update_agenda_item(
+    meeting_id: int,
+    item_id: int,
+    payload: AgendaItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MeetingAgendaItem:
+    """Für die Pflege des Protokolltexts NACH der Versammlung - Titel/
+    Beschreibung/Position bleiben ebenfalls korrigierbar."""
+    _require_write_role(current_user)
+    _get_readable_meeting(db, meeting_id, current_user)
+
+    item = db.get(MeetingAgendaItem, item_id)
+    if item is None or item.meeting_id != meeting_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tagesordnungspunkt nicht gefunden")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "position" in update_data:
+        conflict = db.scalar(
+            select(MeetingAgendaItem).where(
+                MeetingAgendaItem.meeting_id == meeting_id,
+                MeetingAgendaItem.position == update_data["position"],
+                MeetingAgendaItem.item_id != item_id,
+            )
+        )
+        if conflict is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"TOP-Nummer {update_data['position']} ist bereits vergeben."
+            )
+
+    for field, value in update_data.items():
+        setattr(item, field, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 @router.delete("/{meeting_id}/agenda-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agenda_item(
     meeting_id: int,
@@ -253,30 +298,49 @@ def generate_invitation_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="Einladung_Versammlung_{meeting_id}.pdf"'},
     )
-    
+
+
+def _de_number(value: float | None) -> str:
+    """Deutsches Zahlenformat ohne Einheit: 846,76 - Rückgabe '–' bei fehlendem Wert."""
+    if value is None:
+        return "–"
+    formatted = f"{float(value):,.2f}"
+    formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+    return formatted
+
+
 MINUTES_TEMPLATE = """
 <html>
 <head>
 <meta charset="utf-8">
 <style>
   body {{ font-family: 'DejaVu Sans', sans-serif; font-size: 11pt; color: #222; }}
-  .header {{ margin-bottom: 1.5cm; }}
+  .header {{ margin-bottom: 1cm; }}
   h1 {{ font-size: 14pt; }}
   h2 {{ font-size: 12pt; margin-top: 1cm; }}
-  .meta {{ color: #555; font-size: 10pt; margin-bottom: 1cm; }}
-  .resolution {{ margin-bottom: 0.8cm; }}
-  .resolution .lfd {{ font-weight: bold; }}
-  .resolution .desc {{ font-size: 10pt; color: #444; margin-top: 0.1cm; white-space: pre-line; }}
-  .free-text {{ white-space: pre-line; margin-top: 0.5cm; }}
+  .meta {{ color: #555; font-size: 10pt; margin-bottom: 0.3cm; }}
+  .meta-table {{ font-size: 10pt; color: #444; margin-bottom: 1cm; border-collapse: collapse; }}
+  .meta-table td {{ padding: 1px 10px 1px 0; vertical-align: top; }}
+  .top {{ margin-bottom: 0.9cm; }}
+  .top-title {{ font-weight: bold; margin-bottom: 0.15cm; }}
+  .top-text {{ white-space: pre-line; margin-bottom: 0.2cm; }}
+  .resolution {{ margin-top: 0.3cm; margin-left: 0.3cm; }}
+  .resolution .intro {{ font-weight: bold; margin-bottom: 0.1cm; }}
+  .resolution .text {{ white-space: pre-line; margin-bottom: 0.2cm; }}
+  .votes-table {{ font-size: 10pt; margin: 0.2cm 0 0.2cm 0.3cm; border-collapse: collapse; }}
+  .votes-table td {{ padding: 1px 14px 1px 0; }}
+  .status {{ font-weight: bold; margin-top: 0.1cm; margin-left: 0.3cm; }}
+  .other-resolutions {{ margin-top: 1cm; }}
 </style>
 </head>
 <body>
   <div class="header">{property_name}<br>{property_address}</div>
   <h1>Niederschrift zur {meeting_type}</h1>
   <div class="meta">{meeting_date_line}{location_line}</div>
+  <table class="meta-table">{meta_rows_html}</table>
   {free_text_html}
-  <h2>Gefasste Beschlüsse</h2>
-  {resolutions_html}
+  {tops_html}
+  {other_resolutions_html}
 </body>
 </html>
 """
@@ -288,9 +352,18 @@ def generate_minutes_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
+    """
+    Baut die Niederschrift je Tagesordnungspunkt auf: 'protocol_text' des TOPs
+    (Verlaufstext) gefolgt von allen über 'agenda_item_id' verknüpften
+    Beschlüssen (Formel + resolution.description als Beschlusstext +
+    Abstimmungsergebnis + status_note als Beschlussstatus). Beschlüsse, die
+    zwar dieser Versammlung zugeordnet sind, aber keinem TOP (Altdaten,
+    Umlaufbeschluss ohne Agenda), landen gesammelt am Ende.
+    """
     _require_read_access(current_user)
     meeting = _get_readable_meeting(db, meeting_id, current_user)
     property_ = db.get(Property, meeting.property_id)
+    agenda_items = _load_agenda_items(db, meeting_id)
 
     resolutions = list(
         db.scalars(
@@ -299,6 +372,13 @@ def generate_minutes_pdf(
             .order_by(ResolutionCollection.lfd_nr)
         )
     )
+    resolutions_by_item: dict[int, list[ResolutionCollection]] = {}
+    unlinked_resolutions: list[ResolutionCollection] = []
+    for r in resolutions:
+        if r.agenda_item_id is not None:
+            resolutions_by_item.setdefault(r.agenda_item_id, []).append(r)
+        else:
+            unlinked_resolutions.append(r)
 
     is_circular = meeting.meeting_type == "Umlaufbeschluss"
     meeting_date_line = (
@@ -308,18 +388,67 @@ def generate_minutes_pdf(
         + (f", {meeting.meeting_time.strftime('%H:%M')} Uhr" if meeting.meeting_time else "")
     )
     location_line = "" if is_circular or not meeting.location else f" · {meeting.location}"
-    free_text_html = f'<div class="free-text">{meeting.minutes_text}</div>' if meeting.minutes_text else ""
 
-    if resolutions:
-        resolutions_html = "".join(
-            f'<div class="resolution"><span class="lfd">Lfd. Nr. {r.lfd_nr}</span> – {r.title}'
-            + (f'<div class="desc">{r.description}</div>' if r.description else "")
-            + (f'<div class="desc">Vermerke: {r.status_note}</div>' if r.status_note else "")
-            + "</div>"
-            for r in resolutions
+    meta_rows: list[str] = []
+    if not is_circular:
+        if meeting.chairperson:
+            meta_rows.append(f"<tr><td>Versammlungsleiter:</td><td>{meeting.chairperson}</td></tr>")
+        if meeting.minute_taker:
+            meta_rows.append(f"<tr><td>Protokollführer:</td><td>{meeting.minute_taker}</td></tr>")
+        if meeting.meeting_time:
+            meta_rows.append(f"<tr><td>Beginn:</td><td>{meeting.meeting_time.strftime('%H:%M')} Uhr</td></tr>")
+        if meeting.end_time:
+            meta_rows.append(f"<tr><td>Ende:</td><td>{meeting.end_time.strftime('%H:%M')} Uhr</td></tr>")
+    if meeting.represented_shares is not None:
+        meta_rows.append(
+            f"<tr><td>Vertretene Stimmanteile:</td><td>{_de_number(meeting.represented_shares)} "
+            "Miteigentumsanteile</td></tr>"
         )
-    else:
-        resolutions_html = "<p>Keine Beschlüsse dieser Versammlung in der Beschluss-Sammlung verknüpft.</p>"
+    if meeting.quorum_met is not None:
+        meta_rows.append(f"<tr><td>Beschlussfähigkeit:</td><td>{'ja' if meeting.quorum_met else 'nein'}</td></tr>")
+    if meeting.voting_key:
+        meta_rows.append(f"<tr><td>Abstimmungsschlüssel:</td><td>{meeting.voting_key}</td></tr>")
+    meta_rows_html = "".join(meta_rows)
+
+    free_text_html = f'<div class="top-text">{meeting.minutes_text}</div>' if meeting.minutes_text else ""
+
+    def render_resolution(r: ResolutionCollection) -> str:
+        parts = ['<div class="resolution">']
+        parts.append('<div class="intro">Die Eigentümergemeinschaft fasst folgenden Beschluss</div>')
+        if r.description:
+            parts.append(f'<div class="text">{r.description}</div>')
+        if r.votes_yes is not None or r.votes_no is not None or r.votes_abstain is not None:
+            parts.append(
+                '<table class="votes-table">'
+                f"<tr><td>Abstimmungsergebnis:</td><td>JA-Stimmen</td><td>{_de_number(r.votes_yes)}</td></tr>"
+                f"<tr><td></td><td>NEIN-Stimmen</td><td>{_de_number(r.votes_no)}</td></tr>"
+                f"<tr><td></td><td>Stimmenthaltungen</td><td>{_de_number(r.votes_abstain)}</td></tr>"
+                "</table>"
+            )
+        if r.status_note:
+            parts.append(f'<div class="status">Beschlussstatus: {r.status_note}</div>')
+        parts.append("</div>")
+        return "".join(parts)
+
+    tops_parts: list[str] = []
+    for item in agenda_items:
+        tops_parts.append('<div class="top">')
+        tops_parts.append(f'<div class="top-title">TOP {item.position} {item.title}</div>')
+        if item.protocol_text:
+            tops_parts.append(f'<div class="top-text">{item.protocol_text}</div>')
+        for r in resolutions_by_item.get(item.item_id, []):
+            tops_parts.append(render_resolution(r))
+        tops_parts.append("</div>")
+    tops_html = "".join(tops_parts) if tops_parts else "<p>Keine Tagesordnungspunkte erfasst.</p>"
+
+    other_resolutions_html = ""
+    if unlinked_resolutions:
+        other_parts = ['<div class="other-resolutions"><h2>Weitere Beschlüsse dieser Versammlung</h2>']
+        for r in unlinked_resolutions:
+            other_parts.append(f'<div class="top-title">Lfd. Nr. {r.lfd_nr} – {r.title}</div>')
+            other_parts.append(render_resolution(r))
+        other_parts.append("</div>")
+        other_resolutions_html = "".join(other_parts)
 
     html_content = MINUTES_TEMPLATE.format(
         property_name=property_.name,
@@ -327,8 +456,10 @@ def generate_minutes_pdf(
         meeting_type=meeting.meeting_type,
         meeting_date_line=meeting_date_line,
         location_line=location_line,
+        meta_rows_html=meta_rows_html,
         free_text_html=free_text_html,
-        resolutions_html=resolutions_html,
+        tops_html=tops_html,
+        other_resolutions_html=other_resolutions_html,
     )
     pdf_bytes = HTML(string=html_content).write_pdf()
 

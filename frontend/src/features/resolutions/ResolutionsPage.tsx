@@ -133,7 +133,11 @@ export function ResolutionsPage() {
                   {meetingLabel(r.meeting_id) && (
                     <p className="resolutions-page__meeting">Versammlung: {meetingLabel(r.meeting_id)}</p>
                   )}
-
+                  {(r.votes_yes != null || r.votes_no != null || r.votes_abstain != null) && (
+                    <p className="resolutions-page__votes">
+                      Abstimmung: JA {r.votes_yes ?? "–"} · NEIN {r.votes_no ?? "–"} · Enthaltungen {r.votes_abstain ?? "–"}
+                    </p>
+                  )}
                   {r.description && <p className="resolutions-page__description">{r.description}</p>}
 
                   {r.status_note && <p className="resolutions-page__status">Vermerke: {r.status_note}</p>}

@@ -87,3 +87,42 @@
 .agenda-items-panel__form-actions button[type="button"] {
   background-color: var(--color-light);
 }
+
+/* frontend/src/features/meetings/AgendaItemsPanel.css — ergänzen */
+.agenda-items-panel__item-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.agenda-items-panel__protocol {
+  color: #444;
+  font-size: 0.9rem;
+  white-space: pre-line;
+  margin-top: 0.3rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--color-light);
+}
+
+.agenda-items-panel__protocol-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: 0.5rem;
+}
+
+.agenda-items-panel__protocol-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.agenda-items-panel__protocol-form textarea {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
+}

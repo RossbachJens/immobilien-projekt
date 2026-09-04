@@ -23,6 +23,7 @@ import { SettlementPeriodsPage } from "../features/settlementPeriods/SettlementP
 // frontend/src/routes/AppRoutes.tsx — Imports + Route ergänzen
 import { BankAccountsPage } from "../features/bankAccounts/BankAccountsPage";
 import { MeetingsPage } from "../features/meetings/MeetingsPage";
+import { AllocationKeysPage } from "../features/allocationKeys/AllocationKeysPage";
 // ...
 
 export function AppRoutes() {
@@ -45,6 +46,7 @@ export function AppRoutes() {
         <Route path="/settlement-periods" element={<ProtectedRoute><SettlementPeriodsPage /></ProtectedRoute>} />
         <Route path="/bank-accounts" element={<ProtectedRoute><BankAccountsPage /></ProtectedRoute>} />
         <Route path="/meetings" element={<ProtectedRoute><MeetingsPage /></ProtectedRoute>} />
+        <Route path="/allocation-keys" element={<ProtectedRoute><AllocationKeysPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={
