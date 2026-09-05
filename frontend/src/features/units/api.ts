@@ -22,6 +22,7 @@ export interface UnitPayload {
   unit_type?: UnitType | null;
 }
 
+// frontend/src/features/units/api.ts — OwnerAssignment* ersetzen
 export interface OwnerAssignment {
   history_id: number;
   unit_id: number;
@@ -29,6 +30,7 @@ export interface OwnerAssignment {
   ownership_share: number;
   valid_from: string;
   valid_to: string | null;
+  owner_number: string | null;
 }
 
 export interface OwnerAssignmentPayload {
@@ -36,11 +38,14 @@ export interface OwnerAssignmentPayload {
   ownership_share: number;
   valid_from: string;
   valid_to?: string | null;
+  owner_number?: string | null;
 }
 
 export interface OwnerAssignmentUpdatePayload {
   ownership_share?: number;
   valid_to?: string | null;
+  owner_number?: string | null;
+}
 }
 
 export async function listUnits(propertyId?: number): Promise<Unit[]> {

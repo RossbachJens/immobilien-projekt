@@ -24,6 +24,9 @@ import { SettlementPeriodsPage } from "../features/settlementPeriods/SettlementP
 import { BankAccountsPage } from "../features/bankAccounts/BankAccountsPage";
 import { MeetingsPage } from "../features/meetings/MeetingsPage";
 import { AllocationKeysPage } from "../features/allocationKeys/AllocationKeysPage";
+// frontend/src/routes/AppRoutes.tsx — Import + Route ergänzen
+import { HausgeldOverviewPage } from "../features/hausgeldOverview/HausgeldOverviewPage";
+
 // ...
 
 export function AppRoutes() {
@@ -47,6 +50,7 @@ export function AppRoutes() {
         <Route path="/bank-accounts" element={<ProtectedRoute><BankAccountsPage /></ProtectedRoute>} />
         <Route path="/meetings" element={<ProtectedRoute><MeetingsPage /></ProtectedRoute>} />
         <Route path="/allocation-keys" element={<ProtectedRoute><AllocationKeysPage /></ProtectedRoute>} />
+        <Route path="/hausgeld-overview" element={<ProtectedRoute><HausgeldOverviewPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={

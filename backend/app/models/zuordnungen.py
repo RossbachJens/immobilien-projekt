@@ -1,7 +1,8 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, UniqueConstraint,func
+# backend/app/models/zuordnungen.py — Import-Zeile ergänzen
+from sqlalchemy import CheckConstraint, Enum, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -19,6 +20,7 @@ class LeaseStatus(str, enum.Enum):
     gekuendigt = "gekuendigt"
 
 
+# UnitOwnerHistory ergänzen
 class UnitOwnerHistory(Base):
     __tablename__ = "unit_owner_history"
     __table_args__ = (CheckConstraint("ownership_share > 0"),)
@@ -29,7 +31,14 @@ class UnitOwnerHistory(Base):
     ownership_share: Mapped[float] = mapped_column(Numeric(7, 4))
     valid_from: Mapped[date]
     valid_to: Mapped[date | None]
-
+    # Frei vergebbare Eigentümernummer (z.B. "1000401" wie im Muster
+    # Einzelabrechnung, oder ein beliebiges anderes Schema) - bewusst
+    # Freitext statt berechnetes Feld, da jede Verwaltung ein eigenes
+    # Nummernsystem haben kann. An unit_owner_history statt owners gebunden,
+    # weil sich die Nummer laut Muster aus Objekt+Einheit+laufender Nummer
+    # in der Historie ergibt - wechselt also mit der Zuordnung, nicht mit
+    # der Person.
+    owner_number: Mapped[str | None] = mapped_column(String(50))
 
 class UserProperty(Base):
     __tablename__ = "user_properties"

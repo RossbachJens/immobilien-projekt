@@ -274,4 +274,4 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - Rücklagendarstellung und Vermögensaufstellung
 - Mieterseitige Betriebskostenabrechnung (aktuell nur eigentümerseitige Nebenkostenabrechnung)
 - „Dokumente"-Navigationseintrag (zentrale Übersicht aller erzeugten PDFs - Einladungen,
-  Niederschriften, Jahresabrechnungen - liegen bisher nur verstreut je Feature-Seite vor)
+  Niederschriften, Jahresabrechnungen - liegen bisher nur verstreut je Feature-Seite vor

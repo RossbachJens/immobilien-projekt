@@ -14,7 +14,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/units", label: "Einheiten" },
   { to: "/owners", label: "Eigentümer" },
   { to: "/tenants", label: "Mieter" },
+  // frontend/src/layouts/Sidebar.tsx — NAV_ITEMS ergänzen (nach "Buchhaltung")
   { to: "/journal-entries", label: "Buchhaltung" },
+  { to: "/hausgeld-overview", label: "Hausgeldübersicht" },
   { to: "/resolutions", label: "Beschluss-Sammlung" },
   { to: "/budget-plans", label: "Wirtschaftsplan" },
   { to: "/special-assessments", label: "Sonderumlagen" },
@@ -22,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/allocation-keys", label: "Umlageschlüssel" },
   { to: "/bank-accounts", label: "Bankkonten" },
   { to: "/meetings", label: "Versammlungen" },
+  
 ];
 
 /**

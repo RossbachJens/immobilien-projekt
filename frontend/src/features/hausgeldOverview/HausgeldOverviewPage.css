@@ -1,0 +1,82 @@
+/* frontend/src/features/hausgeldOverview/HausgeldOverviewPage.css */
+.hausgeld-overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.hausgeld-overview-page__hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.hausgeld-overview-page__filters {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.hausgeld-overview-page__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.hausgeld-overview-page__filters select,
+.hausgeld-overview-page__filters input {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  min-width: 160px;
+}
+
+.hausgeld-overview-page__no-plan {
+  color: var(--color-error);
+  font-style: italic;
+}
+
+.hausgeld-overview-page__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-1);
+}
+
+.hausgeld-overview-page__table th,
+.hausgeld-overview-page__table td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.hausgeld-overview-page__table tfoot td {
+  font-weight: 700;
+  border-top: 2px solid #ccc;
+  border-bottom: none;
+}
+
+.hausgeld-overview-page__balance--due {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.hausgeld-overview-page__balance--credit {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.hausgeld-overview-page__payments-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+
+.hausgeld-overview-page__payments-table th,
+.hausgeld-overview-page__payments-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}

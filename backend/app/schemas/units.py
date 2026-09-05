@@ -36,16 +36,19 @@ class UnitOut(BaseModel):
     unit_type: str | None
 
 
+# backend/app/schemas/units.py — die drei OwnerAssignment*-Klassen ersetzen
 class OwnerAssignmentCreate(BaseModel):
     owner_id: int
     ownership_share: float = Field(gt=0)
     valid_from: date
     valid_to: date | None = None
+    owner_number: str | None = Field(default=None, max_length=50)
 
 
 class OwnerAssignmentUpdate(BaseModel):
     ownership_share: float | None = Field(default=None, gt=0)
     valid_to: date | None = None
+    owner_number: str | None = Field(default=None, max_length=50)
 
 
 class OwnerAssignmentOut(BaseModel):
@@ -57,3 +60,4 @@ class OwnerAssignmentOut(BaseModel):
     ownership_share: float
     valid_from: date
     valid_to: date | None
+    owner_number: str | None
