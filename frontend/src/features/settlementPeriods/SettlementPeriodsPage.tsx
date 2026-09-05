@@ -336,11 +336,13 @@ function SettlementPeriodDetails({
         ) : (
           <details key={position.position_id} className="settlement-period-details__position">
             <summary>
-              {position.description ?? accountLabelFor(position.account_id)} · {position.actual_amount.toFixed(2)} € ·{" "}
-              {position.allocation_key_type}
-              {!position.is_apportionable && " · nicht umlagefähig"}
-            </summary>
-            <p className="settlement-period-details__account">Konto: {accountLabelFor(position.account_id)}</p>
+            {position.description ?? position.account_ids.map(accountLabelFor).join(", ")} ·{" "}
+            {position.actual_amount.toFixed(2)} € · {position.allocation_key_type}
+            {!position.is_apportionable && " · nicht umlagefähig"}
+          </summary>
+          <p className="settlement-period-details__account">
+            Konten: {position.account_ids.map(accountLabelFor).join(", ")}
+          </p>
             <table className="settlement-period-details__shares-table">
               <thead>
                 <tr>

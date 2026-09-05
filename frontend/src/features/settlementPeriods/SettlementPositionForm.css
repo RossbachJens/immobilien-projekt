@@ -58,3 +58,34 @@
 .settlement-position-form__actions button[type="button"] {
   background-color: var(--color-light);
 }
+
+.settlement-position-form__accounts {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settlement-position-form__hint-inline {
+  font-weight: 400;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.settlement-position-form__account-group-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 0.25rem;
+}
+
+.settlement-position-form__account-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  display: flex;
+  padding: 0.15rem 0;
+}

@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models.abrechnung import (
     SettlementPeriod,
     SettlementPosition,
+    SettlementPositionAccount,
     UnitSettlementShare,
     UnitSettlementSummary,
 )
@@ -26,6 +27,7 @@ from app.schemas.settlement import (
     SettlementPeriodStatusUpdate,
     SettlementPositionCreate,
     SettlementPositionOut,
+    SettlementPositionUpdate,
     UnitSettlementShareOut,
     UnitSettlementSummaryOut,
 )
@@ -80,10 +82,13 @@ def _validate_resolution(db: Session, resolution_id: int, property_id: int) -> N
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannter Beschluss für diese Liegenschaft.")
 
 
-def _compute_actual_amount(db: Session, property_id: int, account_id: int, period_start, period_end) -> float:
-    """Ist-Kosten je Konto = Soll-Summe minus Haben-Summe im Zeitraum - nettet
-    Stornos automatisch heraus (Storno bucht dieselbe Buchung mit vertauschter
-    Richtung, siehe app/routers/journal_entries.py::storno_journal_entry)."""
+def _compute_actual_amount(
+    db: Session, property_id: int, account_ids: list[int], period_start, period_end
+) -> float:
+    """Ist-Kosten je Position = Soll-Summe minus Haben-Summe im Zeitraum,
+    über ALLE gepoolten Konten dieser Position hinweg summiert - nettet
+    Stornos automatisch heraus (siehe
+    app/routers/journal_entries.py::storno_journal_entry)."""
     debit_sum, credit_sum = db.execute(
         select(
             func.coalesce(func.sum(case((EntryLine.direction == EntryDirection.debit, EntryLine.amount), else_=0)), 0),
@@ -92,7 +97,7 @@ def _compute_actual_amount(db: Session, property_id: int, account_id: int, perio
         .select_from(EntryLine)
         .join(JournalEntry, JournalEntry.entry_id == EntryLine.entry_id)
         .where(
-            EntryLine.account_id == account_id,
+            EntryLine.account_id.in_(account_ids),
             EntryLine.property_id == property_id,
             JournalEntry.entry_date >= period_start,
             JournalEntry.entry_date <= period_end,
@@ -100,6 +105,42 @@ def _compute_actual_amount(db: Session, property_id: int, account_id: int, perio
     ).one()
     return float(debit_sum) - float(credit_sum)
 
+def _load_position_account_ids(db: Session, position_ids: list[int]) -> dict[int, list[int]]:
+    if not position_ids:
+        return {}
+    rows = list(
+        db.scalars(
+            select(SettlementPositionAccount).where(
+                SettlementPositionAccount.position_id.in_(position_ids)
+            )
+        )
+    )
+    result: dict[int, list[int]] = {}
+    for row in rows:
+        result.setdefault(row.position_id, []).append(row.account_id)
+    return result
+
+
+def _validate_settlement_accounts(db: Session, account_ids: list[int], property_id: int) -> None:
+    accounts = list(db.scalars(select(Account).where(Account.account_id.in_(account_ids))))
+    found_ids = {a.account_id for a in accounts}
+    missing = set(account_ids) - found_ids
+    if missing:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannte Konto-ID(s): {sorted(missing)}")
+
+    invalid = [
+        a.account_id
+        for a in accounts
+        if not a.is_active
+        or (a.property_id is not None and a.property_id != property_id)
+        or (a.type != AccountType.aufwand and not a.is_reserve_account)
+    ]
+    if invalid:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Konto-ID(s) für eine Abrechnungsposition nicht nutzbar (inaktiv, fremde "
+            f"Liegenschaft oder weder Aufwands- noch Rücklagenkonto): {sorted(invalid)}",
+        )
 
 def _hausgeld_forderung_account_ids(db: Session, property_id: int) -> list[int]:
     return list(
@@ -180,11 +221,13 @@ def _recompute_summaries(db: Session, settlement: SettlementPeriod) -> None:
     db.commit()
 
 
-def _position_to_out(position: SettlementPosition, shares: list[UnitSettlementShare]) -> SettlementPositionOut:
+def _position_to_out(
+    position: SettlementPosition, account_ids: list[int], shares: list[UnitSettlementShare]
+) -> SettlementPositionOut:
     return SettlementPositionOut(
         position_id=position.position_id,
         settlement_id=position.settlement_id,
-        account_id=position.account_id,
+        account_ids=account_ids,
         description=position.description,
         actual_amount=position.actual_amount,
         allocation_key_type=position.allocation_key_type,
@@ -300,7 +343,12 @@ def list_settlement_positions(
     for s in all_shares:
         shares_by_position.setdefault(s.position_id, []).append(s)
 
-    return [_position_to_out(p, shares_by_position.get(p.position_id, [])) for p in positions]
+    accounts_by_position = _load_position_account_ids(db, position_ids)
+
+    return [
+        _position_to_out(p, accounts_by_position.get(p.position_id, []), shares_by_position.get(p.position_id, []))
+        for p in positions
+    ]
 
 
 @router.post(
@@ -321,19 +369,10 @@ def create_settlement_position(
             "Positionen können nur bearbeitet werden, solange die Abrechnung im Entwurf ist.",
         )
 
-    account = db.get(Account, payload.account_id)
-    if account is None or not account.is_active:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekanntes oder inaktives Konto")
-    if account.property_id is not None and account.property_id != settlement.property_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Konto gehört zu einer anderen Liegenschaft")
-    if account.type != AccountType.aufwand and not account.is_reserve_account:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Nur Aufwandskonten oder als Rücklage gekennzeichnete Konten sind für Abrechnungs-Positionen zulässig.",
-        )
+    _validate_settlement_accounts(db, payload.account_ids, settlement.property_id)
 
     actual_amount = _compute_actual_amount(
-        db, settlement.property_id, payload.account_id, settlement.period_start, settlement.period_end
+        db, settlement.property_id, payload.account_ids, settlement.period_start, settlement.period_end
     )
 
     property_ = db.get(Property, settlement.property_id)
@@ -343,14 +382,18 @@ def create_settlement_position(
 
     position = SettlementPosition(
         settlement_id=settlement.settlement_id,
-        account_id=payload.account_id,
         description=payload.description,
         actual_amount=actual_amount,
         allocation_key_type=payload.allocation_key_type,
         is_apportionable=payload.is_apportionable,
     )
     db.add(position)
-    db.flush()
+    db.flush()  # vergibt position.position_id, wird für Konten-Zuordnung und Shares gebraucht
+
+    db.add_all(
+        SettlementPositionAccount(position_id=position.position_id, account_id=account_id)
+        for account_id in payload.account_ids
+    )
 
     shares = [
         UnitSettlementShare(position_id=position.position_id, unit_id=unit_id, allocated_actual_amount=amount)
@@ -364,8 +407,108 @@ def create_settlement_position(
 
     _recompute_summaries(db, settlement)
 
-    return _position_to_out(position, shares)
+    return _position_to_out(position, payload.account_ids, shares)
+@router.patch("/{settlement_id}/positions/{position_id}", response_model=SettlementPositionOut)
+def update_settlement_position(
+    settlement_id: int,
+    position_id: int,
+    payload: SettlementPositionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SettlementPositionOut:
+    _require_write_role(current_user)
+    settlement = _get_readable_period(db, settlement_id, current_user)
 
+    if settlement.status != "Entwurf":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Positionen können nur bearbeitet werden, solange die Abrechnung im Entwurf ist.",
+        )
+
+    position = db.get(SettlementPosition, position_id)
+    if position is None or position.settlement_id != settlement.settlement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Position nicht gefunden")
+
+    account_ids = payload.account_ids
+    if account_ids is not None:
+        _validate_settlement_accounts(db, account_ids, settlement.property_id)
+
+    update_data = payload.model_dump(exclude_unset=True, exclude={"account_ids"})
+    for field, value in update_data.items():
+        setattr(position, field, value)
+
+    if account_ids is not None:
+        db.query(SettlementPositionAccount).filter(
+            SettlementPositionAccount.position_id == position.position_id
+        ).delete()
+        db.add_all(
+            SettlementPositionAccount(position_id=position.position_id, account_id=aid)
+            for aid in account_ids
+        )
+        effective_account_ids = account_ids
+    else:
+        effective_account_ids = _load_position_account_ids(db, [position.position_id]).get(
+            position.position_id, []
+        )
+
+    # Konten und/oder Verteilerschlüssel können sich geändert haben - Ist-Betrag
+    # und Verteilung auf Einheiten daher komplett neu ermitteln (analog
+    # recalculate_settlement, nur für eine einzelne Position).
+    position.actual_amount = _compute_actual_amount(
+        db, settlement.property_id, effective_account_ids, settlement.period_start, settlement.period_end
+    )
+
+    property_ = db.get(Property, settlement.property_id)
+    db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
+    unit_amounts = distribute_amount(
+        db, property_, position.actual_amount, position.allocation_key_type, settlement.fiscal_year
+    )
+    shares = [
+        UnitSettlementShare(position_id=position.position_id, unit_id=unit_id, allocated_actual_amount=amount)
+        for unit_id, amount in unit_amounts
+    ]
+    db.add_all(shares)
+    db.commit()
+    db.refresh(position)
+    for s in shares:
+        db.refresh(s)
+
+    _recompute_summaries(db, settlement)
+
+    return _position_to_out(position, effective_account_ids, shares)
+
+
+@router.delete("/{settlement_id}/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_settlement_position(
+    settlement_id: int,
+    position_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Hartes Löschen - Positionen sind reine Planungsartefakte ohne
+    Bindungswirkung, solange die Abrechnung im Entwurf ist (analog
+    Budget-Positionen). Nach Beschluss nicht mehr möglich."""
+    _require_write_role(current_user)
+    settlement = _get_readable_period(db, settlement_id, current_user)
+
+    if settlement.status != "Entwurf":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Positionen können nur gelöscht werden, solange die Abrechnung im Entwurf ist.",
+        )
+
+    position = db.get(SettlementPosition, position_id)
+    if position is None or position.settlement_id != settlement.settlement_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Position nicht gefunden")
+
+    db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
+    db.query(SettlementPositionAccount).filter(
+        SettlementPositionAccount.position_id == position.position_id
+    ).delete()
+    db.delete(position)
+    db.commit()
+
+    _recompute_summaries(db, settlement)
 
 @router.post("/{settlement_id}/recalculate", response_model=list[SettlementPositionOut])
 def recalculate_settlement(
@@ -373,9 +516,6 @@ def recalculate_settlement(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[SettlementPositionOut]:
-    """Zieht die Ist-Kosten aller Positionen frisch aus journal_entries
-    (falls nach dem Anlegen einer Position noch weitere Buchungen oder
-    Stornos hinzukamen) und verteilt neu."""
     _require_write_role(current_user)
     settlement = _get_readable_period(db, settlement_id, current_user)
 
@@ -386,11 +526,13 @@ def recalculate_settlement(
     positions = list(
         db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
     )
+    accounts_by_position = _load_position_account_ids(db, [p.position_id for p in positions])
 
     result: list[SettlementPositionOut] = []
     for position in positions:
+        account_ids = accounts_by_position.get(position.position_id, [])
         position.actual_amount = _compute_actual_amount(
-            db, settlement.property_id, position.account_id, settlement.period_start, settlement.period_end
+            db, settlement.property_id, account_ids, settlement.period_start, settlement.period_end
         )
         db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
 
@@ -405,7 +547,7 @@ def recalculate_settlement(
         db.flush()
         for s in shares:
             db.refresh(s)
-        result.append(_position_to_out(position, shares))
+        result.append(_position_to_out(position, account_ids, shares))
 
     db.commit()
     _recompute_summaries(db, settlement)
@@ -447,6 +589,7 @@ def export_unit_settlement_pdf(
         db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
     )
     position_ids = [p.position_id for p in positions]
+    accounts_by_position = _load_position_account_ids(db, position_ids)
     shares = (
         list(
             db.scalars(
@@ -474,11 +617,12 @@ def export_unit_settlement_pdf(
         unit=unit,
         owner=owner,
         positions=positions,
+        accounts_by_position=accounts_by_position,
         shares_by_position=shares_by_position,
         summary=summary,
         resolution=resolution,
     )
-
+    
     filename = f"Abrechnung_{settlement.fiscal_year}_{unit.unit_number.replace(' ', '_')}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),

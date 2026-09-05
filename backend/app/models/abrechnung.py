@@ -36,11 +36,12 @@ class SettlementPeriod(Base):
 
 class SettlementPosition(Base):
     """
-    Eine Kostenzeile (Ist-Kosten je Konto, z.B. 'Hausmeister'). is_apportionable
-    unterscheidet umlagefähige von nicht umlagefähigen Kosten (vgl.
-    Muster-Einzelabrechnung) - bewusst Eigenschaft der Position statt des
-    Kontos, da dieselbe Kostenart je nach Vertrag/Satzung unterschiedlich
-    eingestuft werden kann.
+    Eine Kostenzeile (Ist-Kosten, ggf. aus mehreren SKR04-Konten gepoolt -
+    siehe SettlementPositionAccount, z.B. 'Heizkosten' aus Brennstoff +
+    Wartung + Messdienst-Gebühr zusammen). is_apportionable unterscheidet
+    umlagefähige von nicht umlagefähigen Kosten (vgl. Muster-Einzelabrechnung)
+    - bewusst Eigenschaft der Position statt des Kontos, da dieselbe
+    Kostenart je nach Vertrag/Satzung unterschiedlich eingestuft werden kann.
     """
 
     __tablename__ = "settlement_positions"
@@ -48,11 +49,27 @@ class SettlementPosition(Base):
 
     position_id: Mapped[int] = mapped_column(primary_key=True)
     settlement_id: Mapped[int] = mapped_column(ForeignKey("settlement_periods.settlement_id"))
-    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.account_id"))
     description: Mapped[str | None] = mapped_column(String(150))
     actual_amount: Mapped[float] = mapped_column(Numeric(12, 2))
     allocation_key_type: Mapped[str]
     is_apportionable: Mapped[bool] = mapped_column(default=False)
+
+
+class SettlementPositionAccount(Base):
+    """Verknüpft eine Abrechnungsposition mit einem oder mehreren SKR04-Konten
+    (Pooling). Ersetzt die frühere 1:1-Spalte settlement_positions.account_id
+    (Migration 0008) - z.B. um Heizkosten aus mehreren Sachkonten
+    (Brennstoff, Wartung, Immissionsmessung, Messdienst-Gebühr) zu einer
+    Abrechnungsposition zusammenzufassen, bevor nach HeizkostenV verteilt
+    wird. Komposit-Primärschlüssel statt Surrogatschlüssel - analog
+    UserProperty."""
+
+    __tablename__ = "settlement_position_accounts"
+
+    position_id: Mapped[int] = mapped_column(
+        ForeignKey("settlement_positions.position_id"), primary_key=True
+    )
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.account_id"), primary_key=True)
 
 
 class UnitSettlementShare(Base):

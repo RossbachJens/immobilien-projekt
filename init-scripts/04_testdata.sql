@@ -12,10 +12,10 @@ VALUES ('WEG Sonnenblick', 'Sonnenallee 45, 10243 Berlin', 1250.50, 1996, 1000.0
 INSERT INTO accounts (account_id, account_number, account_name, account_class, type, is_active)
 OVERRIDING SYSTEM VALUE
 VALUES
-    (1800, '1800', 'Deutsche Bank - Girokonto (Laufender Betrieb)', '1', 'AKTIV', TRUE),
-    (1810, '1810', 'Aareal Bank - Tagesgeld (Instandhaltungsrücklage)', '1', 'AKTIV', TRUE),
-    (1820, '1820', 'DKB - Kündigungsgeldkonto (Anlage Rücklage)', '1', 'AKTIV', TRUE),
-    (1830, '1830', 'MKB - Sparbrief (Festgeldanlage Rücklage)', '1', 'AKTIV', TRUE),
+    (1800, '1800', 'Girokonto (Laufender Betrieb)', '1', 'AKTIV', TRUE),
+    (1810, '1810', 'Tagesgeld (Instandhaltungsrücklage)', '1', 'AKTIV', TRUE),
+    (1820, '1820', 'Kündigungsgeldkonto (Anlage Rücklage)', '1', 'AKTIV', TRUE),
+    (1830, '1830', 'Sparbrief (Festgeldanlage Rücklage)', '1', 'AKTIV', TRUE),
     (1200, '1200', 'Forderungen gegen Mieter (Sondereigentum)', '1', 'AKTIV', TRUE),
     (1220, '1220', 'Forderungen gegen Eigentümer (Hausgelder)', '1', 'AKTIV', TRUE),
     (4400, '4400', 'Erlöse aus Vermietung (Nettokaltmiete)', '4', 'ERTRAG', TRUE),

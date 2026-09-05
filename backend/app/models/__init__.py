@@ -24,10 +24,10 @@ from app.models.zuordnungen import (  # noqa: F401
 from app.models.abrechnung import (  # noqa: F401
     SettlementPeriod,
     SettlementPosition,
+    SettlementPositionAccount,
     UnitSettlementShare,
     UnitSettlementSummary,
 )
-
 from app.models.bank_accounts import BankAccountPurpose, PropertyBankAccount  # noqa: F401
 
 from app.models.meetings import MeetingAgendaItem, OwnerMeeting  # noqa: F401

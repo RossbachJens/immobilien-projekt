@@ -120,6 +120,27 @@
   Payment-Endpoint auf die Konten 1220 (Hausgeld) bzw. 1200 (Miete) gebucht.
   PDF-Export je Einheit über `reportlab` (tabellenlastig, orientiert an der
   Muster-Jahresabrechnung `Einzelabrechnung 2024 Wohnung 4.docx`).
+- **Editable-until-Beschluss (Wirtschaftsplan-/Abrechnungspositionen):** Solange
+  ein Wirtschaftsplan bzw. eine Abrechnungsperiode im Status "Entwurf" ist,
+  lassen sich einzelne Positionen über `PATCH`/`DELETE /budget-plans/{id}/
+  positions/{position_id}` bzw. `/settlement-periods/{id}/positions/{position_id}`
+  weiterhin ändern oder entfernen. Jede Änderung berechnet die betroffenen
+  `unit_budget_shares`/`unit_settlement_shares` (bei Abrechnungen zusätzlich die
+  `unit_settlement_summaries`) automatisch neu, statt die alte Verteilung stehen
+  zu lassen. Nach der Beschlussfassung ("Beschlossen") sind Positionen gesperrt -
+  Korrekturen laufen dann nur noch über eine neue Abrechnungsperiode bzw. einen
+  neuen Wirtschaftsplan, nicht durch nachträgliches Editieren der beschlossenen
+  Zahlen (konsistent mit dem Storno-Prinzip, nur vor statt nach der
+  Verbindlichkeit).
+- **Umlageschlüssel-Verwaltung im Frontend:** Für CRUD auf `unit_allocation_keys`
+  (siehe Grundsatzentscheidung „Umlageschlüssel-Gültigkeit" oben) existiert ein
+  eigenständiges Feature-Modul (`frontend/src/features/allocationKeys/`: `api.ts`,
+  `useAllocationKeys.ts`, `AllocationKeyForm.tsx`, `AllocationKeysPage.tsx`) mit
+  eigener Route und Sidebar-Eintrag „Umlageschlüssel" - zuvor war ein Umlageschlüssel
+  nur indirekt über `AllocationKeyField` (das Auswahl-Widget in Wirtschaftsplan-,
+  Sonderumlage- und Abrechnungsformularen) referenzierbar, nicht aber eigenständig
+  anlegbar/schließbar.
+
 
 
 ## Architektur
@@ -155,6 +176,22 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - **OCR-Extraktion des SKR04-PDF unzuverlässig:** Für `05_skr04_kontenrahmen.sql` wurde jeder
   Eintrag manuell anhand der Original-Seiten-Scans geprüft statt per automatisierter
   Volltextextraktion übernommen (mehrspaltiges Tabellenlayout im Original).
+- **WeasyPrint auf Debian „trixie": Paketname geändert** — die Bibliothek heißt dort
+  `libgdk-pixbuf-2.0-0` statt der älteren `libgdk-pixbuf2.0-0`-Bezeichnung; ohne die
+  Anpassung im `backend/Dockerfile` schlägt der Image-Build beim `apt-get install`
+  fehl, obwohl WeasyPrint selbst korrekt in `requirements.txt` steht.
+- **Doppelte Postgres-ENUM-Anlage in Migrationen vermeiden:** Wird ein `ENUM`-Typ
+  innerhalb einer Migration zunächst separat per `.create(op.get_bind(),
+  checkfirst=True)` angelegt (z.B. weil eine Spalte diesen Typ referenziert, bevor
+  die Tabelle selbst existiert), muss die Spalte in `create_table()` mit
+  `sqlalchemy.dialects.postgresql.ENUM(..., create_type=False)` referenziert
+  werden - sonst versucht SQLAlchemy beim `create_table()`-Dispatch, den Typ ein
+  zweites Mal anzulegen (`DuplicateObject`). Generisches `sa.Enum(...)` reicht
+  dafür nicht: es baut beim Dispatch eine eigene dialektspezifische Kopie und
+  verliert dabei das `create_type`-Flag - es muss direkt `postgresql.ENUM` sein
+  (siehe `0005_property_bank_accounts.py`, dort auch der Downgrade-Sonderfall:
+  `op.drop_table()` löst kein automatisches `DROP TYPE` aus, das ENUM muss separat
+  gedroppt werden).
 
 
 ## Arbeitsweise ab jetzt (lernorientiert)
@@ -198,17 +235,24 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - **Phase 4:** Verwalter legt für ein Objekt einen Wirtschaftsplan mit Positionen an; das
   System verteilt die Beträge automatisch je Einheit nach Umlageschlüssel
   (`unit_budget_shares`). Eine Sonderumlage kann einem Beschluss aus der Beschluss-Sammlung
-  zugeordnet und ebenfalls je Einheit verteilt werden. ✅ erledigt
+  zugeordnet und ebenfalls je Einheit verteilt werden. ✅ erledigt — Positionen lassen sich
+  zusätzlich bis zur Beschlussfassung weiter bearbeiten/löschen, mit automatischer
+  Neuberechnung der Einheiten-Anteile (siehe Grundsatzentscheidung „Editable-until-Beschluss").
 - **Phase 5:** Vollständige Betriebskostenabrechnung für ein Testobjekt als PDF (Format
-  orientiert an der Beispiel-Jahresabrechnung im Projekt). ✅ Kernfunktion inkl. PDF-Export
-  erledigt; Zahlungseingang-UI und Umlageschlüssel-CRUD-UI im Frontend sowie ggf. einzelne
-  Berechnungs-Slices (ab 5.3) noch offen.
+  orientiert an der Beispiel-Jahresabrechnung im Projekt). ✅ erledigt — inkl. PDF-Export,
+  Zahlungseingang (in die Buchhaltungsseite integriert, `features/payments`, kein
+  eigener Menüpunkt) und eigenständigem Umlageschlüssel-CRUD-Modul (`features/allocationKeys`).
 - **Phase 6:** Jede Liegenschaft verfügt über mindestens ein Giro- und ein Rücklagenkonto mit
   eigener IBAN und Gültigkeitszeitraum. ✅ erledigt
 - **Phase 7:** Vor Produktivbetrieb abgeschlossen. *(offen)*
 - **Phase 8:** Eine Eigentümerversammlung kann angelegt, Einladung und Niederschrift als PDF
   erzeugt und Beschlüsse daraus in die Beschluss-Sammlung übernommen werden; ein
-  Umlaufbeschluss läuft über dieselbe Struktur. ✅ erledigt
+  Umlaufbeschluss läuft über dieselbe Struktur. ✅ Kernfunktion erledigt; eine Erweiterung um
+  eine strukturierte Niederschrift (Kopfdaten wie Versammlungsleiter/Protokollführer/
+  Endzeit/vertretene Anteile/Beschlussfähigkeit, TOP-weiser Protokolltext, Abstimmungs-
+  ergebnisse je Beschluss) ist im Backend fertig (Migration `0007`,
+  `PATCH /meetings/{meeting_id}/agenda-items/{item_id}`) - das zugehörige
+  Eingabeformular im Frontend steht noch aus.
 - **Phase 9:** Gültige Pain.008-Datei für einen Lastschriftlauf. *(offen)*
 
 
@@ -218,14 +262,16 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - [ ] Phase 1 — Auth & Access Control *(Login, JWT, Nutzerverwaltung inkl. Rollenzuweisung ✅; RLS-Policies, `access_log`-Middleware und Google-SSO-Login-Flow offen)*
 - [x] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung sowie Frontend für Properties/Units/Owners/Tenants ✅)*
 - [x] Phase 3 — Buchhaltung *(Kontenrahmen global + liegenschaftseigen, Journal-Erfassung mit Soll=Haben-Trigger, Storno-Flow, Frontend inkl. Kontenverwaltung je Liegenschaft ✅)*
-- [x] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung *(Backend + Frontend ✅)*
-- [ ] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export ✅; Zahlungseingang-UI, Umlageschlüssel-CRUD-UI und ggf. einzelne Berechnungs-Slices ab 5.3 offen)*
+- [x] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung *(Backend + Frontend ✅; Positionen bis zur Beschlussfassung editierbar/löschbar ✅)*
+- [x] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export, Zahlungseingang (integriert in die Buchhaltungsseite) und eigenständiges Umlageschlüssel-CRUD-Modul ✅)*
 - [x] Phase 6 — Reale Bankkonten je Liegenschaft *(`property_bank_accounts` mit Gültigkeitszeitraum ✅)*
 - [ ] Phase 7 — Härtung & Betrieb *(offen: RLS-Durchsetzung, Google-SSO-Flow, `access_log`-Middleware, produktiver E-Mail-Versand, Rate-Limiting, Backups, Key-Rotation, E2E-Tests)*
-- [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅)*
+- [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅; strukturierte Niederschrift (Kopfdaten, TOP-Protokolltext, Abstimmungsergebnisse) im Backend fertig, Frontend-Formular offen)*
 - [ ] Phase 9 — Mietsollstellung & SEPA *(offen, verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)*
 
 ### Bewusst zurückgestellt (kein eigener Phasen-Slot)
 - § 35a EStG-Bescheinigung (Haushaltsnahe Dienstleistungen/Handwerkerleistungen)
 - Rücklagendarstellung und Vermögensaufstellung
 - Mieterseitige Betriebskostenabrechnung (aktuell nur eigentümerseitige Nebenkostenabrechnung)
+- „Dokumente"-Navigationseintrag (zentrale Übersicht aller erzeugten PDFs - Einladungen,
+  Niederschriften, Jahresabrechnungen - liegen bisher nur verstreut je Feature-Seite vor)

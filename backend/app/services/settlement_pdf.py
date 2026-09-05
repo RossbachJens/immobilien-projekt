@@ -47,6 +47,7 @@ def build_settlement_pdf(
     unit: Unit,
     owner: Owner | None,
     positions: list[SettlementPosition],
+    accounts_by_position: dict[int, list[int]],
     shares_by_position: dict[int, UnitSettlementShare],
     summary: UnitSettlementSummary | None,
     resolution: ResolutionCollection | None,
@@ -153,7 +154,9 @@ def build_settlement_pdf(
     for position in positions:
         share = shares_by_position.get(position.position_id)
         allocated = float(share.allocated_actual_amount) if share else 0.0
-        label = position.description or f"Konto {position.account_id}"
+        account_ids = accounts_by_position.get(position.position_id, [])
+        fallback_label = f"Konten {', '.join(str(a) for a in account_ids)}" if account_ids else "Position"
+        label = position.description or fallback_label
         apportion_note = "" if position.is_apportionable else " (nicht umlagefähig)"
         rows.append(
             [label + apportion_note, position.allocation_key_type, _eur(position.actual_amount), _eur(allocated)]

@@ -39,7 +39,7 @@ export interface UnitSettlementShare {
 export interface SettlementPosition {
   position_id: number;
   settlement_id: number;
-  account_id: number;
+  account_ids: number[];
   description: string | null;
   actual_amount: number;
   allocation_key_type: string;
@@ -48,19 +48,14 @@ export interface SettlementPosition {
 }
 
 export interface SettlementPositionPayload {
-  account_id: number;
+  account_ids: number[];
   description?: string | null;
   allocation_key_type: string;
   is_apportionable: boolean;
 }
 
-// Bewusst dieselben Felder wie SettlementPositionPayload, aber alle optional
-// - Positionen sind nur "bis zum Beschluss" (Abrechnungs-Status "Entwurf")
-// änderbar, siehe app/routers/settlement_periods.py::update_settlement_position.
-// actual_amount ist absichtlich nicht enthalten - der Ist-Betrag wird beim
-// Speichern serverseitig automatisch neu aus den Buchungen ermittelt.
 export interface SettlementPositionUpdatePayload {
-  account_id?: number;
+  account_ids?: number[];
   description?: string | null;
   allocation_key_type?: string;
   is_apportionable?: boolean;

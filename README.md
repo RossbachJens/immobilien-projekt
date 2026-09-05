@@ -9,10 +9,12 @@ Dieses Projekt stellt eine revisionssichere, datenbankseitig validierte Software
 *   **Miteigentümer- & Mietermandantentrennung:** Integrierte Relationen trennen die Zugriffe strikt. Verwalter sehen nur zugewiesene Objekte (`user_properties`), Eigentümer nur eigene Einheiten (`unit_owner_history`) und Mieter nur ihre Verträge (`leases`).
 *   **Soft-Delete (Logisches Löschen):** Daten werden durch das Feld `deleted_at` logisch ausgeblendet. Partielle Unique-Indizes sorgen dafür, dass E-Mails oder Google IDs nach einem Soft-Delete für Neuanmeldungen wieder frei werden.
 *   **SKR 04 - global und liegenschaftseigen:** Der Standard-Kontenrahmen ist zentral gepflegt; Verwalter können zusätzlich eigene 4-stellige Konten je Liegenschaft anlegen (`accounts.property_id` gesetzt), z. B. für Sonderpositionen oder Rücklagenkonten (`is_reserve_account`). Zwei partielle Unique-Indizes verhindern doppelte Kontonummern - getrennt für globale und liegenschaftseigene Konten.
-*   **Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung (§ 24 WEG):** `budget_plans`/`budget_positions`/`unit_budget_shares` verteilen geplante Jahresbeträge automatisch je Einheit (MEA, Wohnfläche oder individueller Umlageschlüssel). Ein Wirtschaftsplan wird erst mit Verknüpfung zu einem Beschluss verbindlich ("Beschlossen"). Sonderumlagen (`special_assessments`/`unit_special_assessment_shares`) nutzen dieselbe Verteilungslogik (`app/core/allocation.py`) inklusive Zahlungsstatus je Einheit. Die Beschluss-Sammlung selbst ist append-only mit fortlaufender, nie wiederverwendeter `lfd_nr` (auch nicht nach Soft-Delete-Korrektur); spätere Entwicklungen (z. B. eine Gerichtsentscheidung) werden als Folgeeintrag (`refers_to_resolution_id`) erfasst statt bestehende Zeilen zu ändern - dasselbe Prinzip wie bei Storno-Buchungen.
-*   **Nebenkostenabrechnung:** Vollständige Jahresabrechnung je Einheit (`settlement_periods`/`settlement_positions`/`unit_settlement_shares`/`unit_settlement_summaries`). Zahlungseingänge werden auf die Hausgeld-/Mietkonten (1220/1200) gebucht, die Kostenverteilung läuft über dieselbe gemeinsame Allokationslogik wie Wirtschaftsplan und Sonderumlagen. PDF-Export je Einheit (`reportlab`) im Format der Muster-Jahresabrechnung.
+*   **Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung (§ 24 WEG):** `budget_plans`/`budget_positions`/`unit_budget_shares` verteilen geplante Jahresbeträge automatisch je Einheit (MEA, Wohnfläche oder individueller Umlageschlüssel). Ein Wirtschaftsplan wird erst mit Verknüpfung zu einem Beschluss verbindlich ("Beschlossen"). Solange er im Entwurf ist, lassen sich einzelne Positionen weiterhin bearbeiten oder löschen - die Verteilung auf die Einheiten wird dabei automatisch neu berechnet. Sonderumlagen (`special_assessments`/`unit_special_assessment_shares`) nutzen dieselbe Verteilungslogik (`app/core/allocation.py`) inklusive Zahlungsstatus je Einheit. Die Beschluss-Sammlung selbst ist append-only mit fortlaufender, nie wiederverwendeter `lfd_nr` (auch nicht nach Soft-Delete-Korrektur); spätere Entwicklungen (z. B. eine Gerichtsentscheidung) werden als Folgeeintrag (`refers_to_resolution_id`) erfasst statt bestehende Zeilen zu ändern - dasselbe Prinzip wie bei Storno-Buchungen.
+*   **Nebenkostenabrechnung:** Vollständige Jahresabrechnung je Einheit (`settlement_periods`/`settlement_positions`/`unit_settlement_shares`/`unit_settlement_summaries`), Positionen ebenfalls bis zur Beschlussfassung editierbar/löschbar mit automatischer Neuberechnung der Anteile und Einheiten-Ergebnisse. Zahlungseingänge werden auf die Hausgeld-/Mietkonten (1220/1200) gebucht, die Kostenverteilung läuft über dieselbe gemeinsame Allokationslogik wie Wirtschaftsplan und Sonderumlagen. PDF-Export je Einheit (`reportlab`) im Format der Muster-Jahresabrechnung.
+*   **Umlageschlüssel-Verwaltung:** Eigenständiges Frontend-Modul (`features/allocationKeys`) für CRUD auf `unit_allocation_keys` mit eigener Sidebar-Seite - ergänzt das bisherige Auswahl-Widget (`AllocationKeyField`), das in Wirtschaftsplan-, Sonderumlage- und Abrechnungsformularen nur einen bestehenden Schlüssel referenziert, nicht aber anlegt.
+*   **Zahlungseingang:** Hausgeld- und Mietzahlungen werden über einen eigenen Endpunkt (`POST /payments`) auf die Forderungskonten 1220/1200 gebucht und lösen automatisch einen ausgeglichenen Buchungssatz aus (`journal_entries`/`entry_lines`). Im Frontend bewusst in die Buchhaltungsseite integriert statt als eigener Menüpunkt, da ein Zahlungseingang fachlich eine normale Buchung ist.
 *   **Reale Bankkonten je Liegenschaft (Trennungsgebot § 27 Abs. 5 WEG):** `property_bank_accounts` verwaltet Girokonto(en) und beliebig viele Rücklagenkonten (Tagesgeld, Kündigungsgeld, Festgeld, ...) je Liegenschaft mit Gültigkeitszeitraum (`valid_from`/`valid_to`) statt einem `is_active`-Flag; ein `EXCLUDE USING gist`-Constraint verhindert überlappende Gültigkeiten - dasselbe Muster wie bei der Eigentümerhistorie.
-*   **Eigentümerversammlungen & Umlaufbeschluss:** `owner_meetings`/`meeting_agenda_items` bilden Präsenzversammlungen und Umlaufbeschlüsse über dieselbe Struktur ab; die Beschluss-Sammlung wird optional mit einer Versammlung verknüpft (`meeting_id`). Einladung und Niederschrift werden serverseitig als PDF generiert (WeasyPrint).
+*   **Eigentümerversammlungen & Umlaufbeschluss:** `owner_meetings`/`meeting_agenda_items` bilden Präsenzversammlungen und Umlaufbeschlüsse über dieselbe Struktur ab; die Beschluss-Sammlung wird optional mit einer Versammlung verknüpft (`meeting_id`). Einladung und Niederschrift werden serverseitig als PDF generiert (WeasyPrint). Eine strukturierte Erweiterung der Niederschrift (Kopfdaten wie Versammlungsleiter, Protokollführer, Endzeit, vertretene Anteile, Beschlussfähigkeit; TOP-weiser Protokolltext; Abstimmungsergebnisse je Beschluss) ist im Backend abgeschlossen (Migration `0007`); das Eingabeformular im Frontend ist der nächste Schritt.
 *   **Dynamische Umlageschlüssel mit Gültigkeitszeitraum:** Die Tabelle `unit_allocation_keys` speichert Ablesewerte (z. B. Heizkostenverteiler) nicht mehr jahresweise, sondern mit einem Gültigkeitszeitraum (`valid_from_year`/`valid_to_year`). Ein Wechsel ist nur zum nächsten 01.01. wirksam; ein DB-seitiger `EXCLUDE`-Constraint verhindert überlappende Zeiträume je Einheit und Schlüsseltyp.
 *   **Rollenzuweisung über Nutzerverwaltung:** Die Rolle eines Users (Admin/Verwalter/Eigentümer/Mieter) ergibt sich aus dem Datenmodell (`is_admin`, `owner_id`, `tenant_id`, `user_properties`). Admins verknüpfen Eigentümer/Mieter über `POST`/`PATCH /users`; die API erzwingt dabei Rollen-Exklusivität und 1:1-Eindeutigkeit je Owner/Tenant.
 *   **Google OAuth2 (SSO) - vorbereitet:** Das Datenmodell (`users.google_sub_id`, CHECK-Constraint `password_hash IS NOT NULL OR google_sub_id IS NOT NULL`) unterstützt bereits eine hybride Anmeldung; der eigentliche OAuth2-Login-Flow ist noch nicht implementiert (siehe Offene Punkte).
@@ -39,14 +41,22 @@ immobilien-project/
 │   ├── alembic/versions/          # Schema-Änderungen NACH der 01_schema.sql-Baseline
 │   │   ├── 0001_property_accounts.py
 │   │   ├── 0002_resolution_details.py
-│   │   └── 0003_budget_extensions.py
+│   │   ├── 0003_budget_extensions.py
+│   │   ├── 0004_settlement.py             # Nebenkostenabrechnung
+│   │   ├── 0005_property_bank_accounts.py # Reale Bankkonten je Liegenschaft
+│   │   ├── 0006_owner_meetings.py         # Eigentümerversammlungen & Umlaufbeschluss
+│   │   └── 0007_meeting_minutes.py        # Strukturierte Niederschrift (Kopfdaten, Abstimmungen)
 │   └── app/
-│       ├── models/ · schemas/ · routers/ · core/   # FastAPI-Anwendung (SQLAlchemy 2.0, Pydantic)
+│       ├── models/ · schemas/ · routers/ · core/ · services/   # FastAPI-Anwendung (SQLAlchemy 2.0, Pydantic)
 │       └── cli.py                 # CLI zum Anlegen des ersten Admin-Accounts
 └── frontend/
     └── src/
         ├── api/ · components/ · layouts/ · routes/ · styles/
-        └── features/<domäne>/     # api.ts / useHook.ts / Page.tsx je Fachdomäne
+        └── features/<domäne>/     # api.ts / useHook.ts / Page.tsx je Fachdomäne, u.a.
+                                    # properties, units, owners, tenants, users, accounts,
+                                    # journalEntries, payments, resolutions, budgetPlans,
+                                    # specialAssessments, settlementPeriods, bankAccounts,
+                                    # allocationKeys, meetings, auth, health
 ```
 
 ## 🔑 Erster Admin-Account
@@ -67,7 +77,7 @@ docker compose exec backend python -m app.cli create-admin \
 Abgeschlossen sind die Phasen 0–6 sowie - zusätzlich zur ursprünglichen Phasenplanung - Eigentümerversammlungen inkl. Umlaufbeschluss. Details und der vollständige Phasenplan stehen in `PROJECTPLAN.md`.
 
 Noch offen:
-- **Frontend:** Zahlungseingang-UI (Nebenkostenabrechnung) und Umlageschlüssel-CRUD-UI fehlen noch; einzelne Berechnungs-Slices der Nebenkostenabrechnung (ab 5.3) sind möglicherweise noch lückenhaft.
-- **Bewusst zurückgestellt:** § 35a EStG-Bescheinigung, Rücklagendarstellung/Vermögensaufstellung, mieterseitige Betriebskostenabrechnung.
+- **Niederschrift (Frontend):** Die strukturierte Erweiterung der Versammlungs-Niederschrift (Kopfdaten wie Versammlungsleiter/Protokollführer/Endzeit/vertretene Anteile/Beschlussfähigkeit, TOP-weiser Protokolltext, Abstimmungsergebnisse je Beschluss) ist im Backend abgeschlossen (Migration `0007`); das zugehörige Eingabeformular im Frontend steht noch aus.
+- **Bewusst zurückgestellt:** § 35a EStG-Bescheinigung, Rücklagendarstellung/Vermögensaufstellung, mieterseitige Betriebskostenabrechnung, ein zentraler „Dokumente"-Navigationseintrag.
 - **Phase 7 (Härtung & Betrieb):** E-Mail-Versand (aktuell nur ein Dev-Token-Stub im Passwort-Reset-Flow), PostgreSQL-Row-Level-Security als zweite Verteidigungslinie neben der Query-Filterung, Google-SSO-Login-Flow (Datenmodell bereits vorbereitet), `access_log`-Middleware, Rate-Limiting, Backups, Key-Rotation, E2E-Tests.
 - **Mietsollstellung & SEPA-Export (Pain.008):** War ursprünglich als Phase 6 geplant, wurde zugunsten der Bankkonten-Verwaltung je Liegenschaft zurückgestellt und läuft jetzt als eigene, spätere Phase.
