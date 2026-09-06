@@ -46,14 +46,3 @@
 .meeting-form__actions button[type="button"] {
   background-color: var(--color-light);
 }
-/* frontend/src/features/meetings/MeetingsPage.css — ergänzen */
-.meetings-page__minutes-form h4 {
-  margin-bottom: 0.2rem;
-}
-
-.meetings-page__minutes-form select {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font: inherit;
-}

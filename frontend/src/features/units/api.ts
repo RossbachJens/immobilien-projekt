@@ -46,7 +46,7 @@ export interface OwnerAssignmentUpdatePayload {
   valid_to?: string | null;
   owner_number?: string | null;
 }
-}
+
 
 export async function listUnits(propertyId?: number): Promise<Unit[]> {
   const { data } = await apiClient.get<Unit[]>("/units", {

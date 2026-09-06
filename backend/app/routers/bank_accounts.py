@@ -10,9 +10,11 @@ from app.core.deps import get_current_user
 from app.core.roles import resolve_role
 from app.db.session import get_db
 from app.models.bank_accounts import PropertyBankAccount
-from app.models.buchhaltung import Account, AccountType
+# backend/app/routers/bank_accounts.py — Imports ergänzen
+from app.models.buchhaltung import Account, AccountType, EntryDirection, EntryLine, JournalEntry
 from app.models.stammdaten import Property, User
 from app.schemas.bank_accounts import BankAccountCreate, BankAccountOut, BankAccountUpdate
+
 
 router = APIRouter(prefix="/bank-accounts", tags=["bank-accounts"])
 
@@ -69,6 +71,75 @@ def _get_editable_bank_account(
     _check_property_accessible(db, bank_account.property_id, current_user)
     return bank_account
 
+# backend/app/routers/bank_accounts.py — neue Konstante + Helper ergänzen
+OPENING_BALANCE_ACCOUNT_NUMBER = "9000"
+
+
+def _get_opening_balance_account(db: Session) -> Account:
+    account = db.scalar(
+        select(Account).where(
+            Account.account_number == OPENING_BALANCE_ACCOUNT_NUMBER, Account.property_id.is_(None)
+        )
+    )
+    if account is None or not account.is_active:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Globales Konto 9000 (Eröffnungsbilanzkonto) fehlt - wurde Migration 0010 ausgeführt?",
+        )
+    return account
+
+
+def _book_opening_balance(
+    db: Session,
+    bank_account: PropertyBankAccount,
+    payload: BankAccountCreate,
+    current_user: User,
+) -> None:
+    """Bucht den bei Anlage angegebenen Anfangsbestand (z.B. bei Übernahme
+    einer bestehenden WEG) als ganz normale, ausgeglichene Eröffnungsbuchung
+    gegen das globale Konto 9000 - der Kontostand selbst wird nirgends
+    gespeichert, sondern ergibt sich immer aus journal_entries/entry_lines.
+    Positiver Betrag = Guthaben (Soll Bankkonto), negativer Betrag =
+    überzogenes Konto (Haben Bankkonto)."""
+    opening_account = _get_opening_balance_account(db)
+    amount = abs(payload.opening_balance)
+    if payload.opening_balance > 0:
+        bank_direction, contra_direction = EntryDirection.debit, EntryDirection.credit
+    else:
+        bank_direction, contra_direction = EntryDirection.credit, EntryDirection.debit
+
+    entry = JournalEntry(
+        property_id=payload.property_id,
+        entry_date=payload.valid_from,
+        document_reference=None,
+        description=f"Anfangsbestand bei Einrichtung des Bankkontos ({bank_account.bank_name})",
+        created_by=current_user.user_id,
+    )
+    db.add(entry)
+    db.flush()  # vergibt entry.entry_id, wird für die Zeilen gebraucht
+
+    db.add_all(
+        [
+            EntryLine(
+                entry_id=entry.entry_id,
+                account_id=bank_account.account_id,
+                property_id=payload.property_id,
+                unit_id=None,
+                lease_id=None,
+                amount=amount,
+                direction=bank_direction,
+            ),
+            EntryLine(
+                entry_id=entry.entry_id,
+                account_id=opening_account.account_id,
+                property_id=payload.property_id,
+                unit_id=None,
+                lease_id=None,
+                amount=amount,
+                direction=contra_direction,
+            ),
+        ]
+    )
 
 @router.get("", response_model=list[BankAccountOut])
 def list_bank_accounts(
@@ -90,6 +161,7 @@ def list_bank_accounts(
     return list(db.scalars(query))
 
 
+# backend/app/routers/bank_accounts.py — create_bank_account vollständig ersetzen
 @router.post("", response_model=BankAccountOut, status_code=status.HTTP_201_CREATED)
 def create_bank_account(
     payload: BankAccountCreate,
@@ -106,6 +178,8 @@ def create_bank_account(
         account_purpose=payload.account_purpose,
         purpose_detail=payload.purpose_detail,
         bank_name=payload.bank_name,
+        valid_from=payload.valid_from,
+        valid_to=payload.valid_to,
     )
     if payload.iban:
         bank_account.iban_encrypted = encrypt_value(db, payload.iban)
@@ -114,6 +188,18 @@ def create_bank_account(
         bank_account.bic_encrypted = encrypt_value(db, payload.bic)
 
     db.add(bank_account)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Für dieses SKR04-Konto existiert bereits ein aktives reales Bankkonto.",
+        ) from exc
+
+    if payload.opening_balance:
+        _book_opening_balance(db, bank_account, payload, current_user)
+
     try:
         db.commit()
     except IntegrityError as exc:

@@ -109,10 +109,7 @@ export function UnitsPage() {
                       type="button"
                       onClick={() => setExpandedUnitId(expandedUnitId === unit.unit_id ? null : unit.unit_id)}
                     >
-                      // frontend/src/features/units/UnitsPage.tsx — Aufruf anpassen
-                      {expandedUnitId === unit.unit_id && (
-                        <UnitOwnerAssignments unitId={unit.unit_id} unitNumber={unit.unit_number} />
-                      )}
+                      {expandedUnitId === unit.unit_id ? "Eigentümer ausblenden" : "Eigentümer"}
                     </button>
                     <button type="button" onClick={() => setMode(unit.unit_id)}>
                       Bearbeiten
@@ -122,7 +119,9 @@ export function UnitsPage() {
                     </button>
                   </div>
                 </div>
-                {expandedUnitId === unit.unit_id && <UnitOwnerAssignments unitId={unit.unit_id} />}
+                {expandedUnitId === unit.unit_id && (
+                  <UnitOwnerAssignments unitId={unit.unit_id} unitNumber={unit.unit_number} />
+                )}
               </li>
             ))}
           </ul>

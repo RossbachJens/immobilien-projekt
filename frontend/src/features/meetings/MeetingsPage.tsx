@@ -6,7 +6,7 @@ import { Card } from "../../components/Card";
 import { useProperties } from "../properties/useProperties";
 import { AgendaItemsPanel } from "./AgendaItemsPanel";
 import { downloadInvitation, downloadMinutes } from "./api";
-import type { MeetingPayload, MeetingStatus } from "./api";
+import type { Meeting, MeetingPayload, MeetingStatus } from "./api";
 import { MeetingForm } from "./MeetingForm";
 import { useCreateMeeting, useMeetings, useUpdateMeeting } from "./useMeetings";
 import "./MeetingsPage.css";
@@ -17,6 +17,8 @@ const STATUS_LABELS: Record<MeetingStatus, string> = {
   Durchgeführt: "Durchgeführt",
   Protokolliert: "Protokolliert",
 };
+
+type QuorumDraft = "" | "true" | "false";
 
 export function MeetingsPage() {
   const { data: properties, isLoading: propertiesLoading } = useProperties();
@@ -30,9 +32,17 @@ export function MeetingsPage() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [minutesDraft, setMinutesDraft] = useState("");
-  const [minutesError, setMinutesError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // Niederschrift-Formular-Drafts (Kopfdaten + freier Text)
+  const [minutesDraft, setMinutesDraft] = useState("");
+  const [chairpersonDraft, setChairpersonDraft] = useState("");
+  const [minuteTakerDraft, setMinuteTakerDraft] = useState("");
+  const [endTimeDraft, setEndTimeDraft] = useState("");
+  const [representedSharesDraft, setRepresentedSharesDraft] = useState("");
+  const [quorumMetDraft, setQuorumMetDraft] = useState<QuorumDraft>("");
+  const [votingKeyDraft, setVotingKeyDraft] = useState("");
+  const [minutesError, setMinutesError] = useState<string | null>(null);
 
   const isForbidden =
     isError &&
@@ -49,22 +59,39 @@ export function MeetingsPage() {
     });
   }
 
-  function toggleExpand(meetingId: number, currentMinutes: string | null) {
-    if (expandedId === meetingId) {
+  function toggleExpand(meeting: Meeting) {
+    if (expandedId === meeting.meeting_id) {
       setExpandedId(null);
       return;
     }
-    setExpandedId(meetingId);
-    setMinutesDraft(currentMinutes ?? "");
+    setExpandedId(meeting.meeting_id);
+    setMinutesDraft(meeting.minutes_text ?? "");
+    setChairpersonDraft(meeting.chairperson ?? "");
+    setMinuteTakerDraft(meeting.minute_taker ?? "");
+    setEndTimeDraft(meeting.end_time ? meeting.end_time.slice(0, 5) : "");
+    setRepresentedSharesDraft(meeting.represented_shares != null ? String(meeting.represented_shares) : "");
+    setQuorumMetDraft(meeting.quorum_met == null ? "" : meeting.quorum_met ? "true" : "false");
+    setVotingKeyDraft(meeting.voting_key ?? "");
     setMinutesError(null);
   }
 
-  function saveMinutes(event: FormEvent, meetingId: number) {
+  function saveNiederschrift(event: FormEvent, meetingId: number) {
     event.preventDefault();
     setMinutesError(null);
     updateMutation.mutate(
-      { meetingId, payload: { minutes_text: minutesDraft || null } },
-      { onError: () => setMinutesError("Niederschriftstext konnte nicht gespeichert werden.") },
+      {
+        meetingId,
+        payload: {
+          minutes_text: minutesDraft || null,
+          chairperson: chairpersonDraft || null,
+          minute_taker: minuteTakerDraft || null,
+          end_time: endTimeDraft || null,
+          represented_shares: representedSharesDraft ? Number(representedSharesDraft) : null,
+          quorum_met: quorumMetDraft === "" ? null : quorumMetDraft === "true",
+          voting_key: votingKeyDraft || null,
+        },
+      },
+      { onError: () => setMinutesError("Niederschrift konnte nicht gespeichert werden.") },
     );
   }
 
@@ -151,7 +178,7 @@ export function MeetingsPage() {
                     <button type="button" onClick={() => handleMinutes(m.meeting_id)}>
                       Niederschrift (PDF)
                     </button>
-                    <button type="button" onClick={() => toggleExpand(m.meeting_id, m.minutes_text)}>
+                    <button type="button" onClick={() => toggleExpand(m)}>
                       {expandedId === m.meeting_id ? "Details ausblenden" : "Details"}
                     </button>
                   </div>
@@ -161,19 +188,78 @@ export function MeetingsPage() {
                   <div className="meetings-page__detail">
                     <AgendaItemsPanel meetingId={m.meeting_id} />
 
-                    <form onSubmit={(e) => saveMinutes(e, m.meeting_id)} className="meetings-page__minutes-form">
+                    <form
+                      onSubmit={(e) => saveNiederschrift(e, m.meeting_id)}
+                      className="meetings-page__minutes-form"
+                    >
+                      <h4>Niederschrift – Kopfdaten</h4>
+                      {m.meeting_type !== "Umlaufbeschluss" && (
+                        <>
+                          <label>
+                            Versammlungsleiter
+                            <input
+                              value={chairpersonDraft}
+                              onChange={(e) => setChairpersonDraft(e.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Protokollführer
+                            <input
+                              value={minuteTakerDraft}
+                              onChange={(e) => setMinuteTakerDraft(e.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Ende
+                            <input
+                              type="time"
+                              value={endTimeDraft}
+                              onChange={(e) => setEndTimeDraft(e.target.value)}
+                            />
+                          </label>
+                        </>
+                      )}
                       <label>
-                        Niederschriftstext (freier Vermerk, erscheint über der Beschlussliste)
+                        Vertretene Miteigentumsanteile
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={representedSharesDraft}
+                          onChange={(e) => setRepresentedSharesDraft(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Beschlussfähigkeit
+                        <select
+                          value={quorumMetDraft}
+                          onChange={(e) => setQuorumMetDraft(e.target.value as QuorumDraft)}
+                        >
+                          <option value="">– keine Angabe –</option>
+                          <option value="true">ja</option>
+                          <option value="false">nein</option>
+                        </select>
+                      </label>
+                      <label>
+                        Abstimmungsschlüssel
+                        <input
+                          value={votingKeyDraft}
+                          onChange={(e) => setVotingKeyDraft(e.target.value)}
+                          placeholder="z.B. Miteigentumsanteile"
+                        />
+                      </label>
+                      <label>
+                        Niederschriftstext (freier Vermerk, erscheint über der Tagesordnung)
                         <textarea
                           value={minutesDraft}
                           onChange={(e) => setMinutesDraft(e.target.value)}
                           rows={4}
-                          placeholder="z.B. Anwesenheit, Beschlussfähigkeit, Ablauf…"
+                          placeholder="z.B. Begrüßung, Feststellung der ordentlichen Ladung…"
                         />
                       </label>
                       {minutesError && <p className="meetings-page__error">{minutesError}</p>}
                       <button type="submit" disabled={updateMutation.isPending}>
-                        {updateMutation.isPending ? "Wird gespeichert…" : "Text speichern"}
+                        {updateMutation.isPending ? "Wird gespeichert…" : "Niederschrift speichern"}
                       </button>
                     </form>
                   </div>

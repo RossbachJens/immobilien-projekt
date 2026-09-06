@@ -14,6 +14,7 @@ const PURPOSE_LABELS: Record<BankAccountPurpose, string> = {
   SONSTIGES: "Sonstiges",
 };
 
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -52,22 +53,25 @@ export function BankAccountForm({
   const [validFrom, setValidFrom] = useState(todayIso());
   const [hasEnd, setHasEnd] = useState(false);
   const [validTo, setValidTo] = useState("");
+  const [openingBalance, setOpeningBalance] = useState("");
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (accountId === "") return;
-    onSubmit({
-      property_id: propertyId,
-      account_id: accountId,
-      account_purpose: purpose,
-      purpose_detail: purposeDetail || null,
-      bank_name: bankName,
-      iban: iban || null,
-      bic: bic || null,
-      valid_from: validFrom,
-      valid_to: hasEnd && validTo ? validTo : null,
-    });
-  }
+// frontend/src/features/bankAccounts/BankAccountForm.tsx — handleSubmit anpassen
+function handleSubmit(event: FormEvent) {
+  event.preventDefault();
+  if (accountId === "") return;
+  onSubmit({
+    property_id: propertyId,
+    account_id: accountId,
+    account_purpose: purpose,
+    purpose_detail: purposeDetail || null,
+    bank_name: bankName,
+    iban: iban || null,
+    bic: bic || null,
+    valid_from: validFrom,
+    valid_to: hasEnd && validTo ? validTo : null,
+    opening_balance: openingBalance ? Number(openingBalance) : 0,
+  });
+}
 
   return (
     <form onSubmit={handleSubmit} className="bank-account-form">
@@ -131,6 +135,20 @@ export function BankAccountForm({
           Gültig bis
           <input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} required />
         </label>
+        <label>
+          Anfangsbestand (€)
+          <input
+            type="number"
+            step="0.01"
+            value={openingBalance}
+            onChange={(e) => setOpeningBalance(e.target.value)}
+            placeholder="0,00"
+          />
+        </label>
+        <p className="bank-account-form__hint">
+          Nur bei Übernahme einer bestehenden WEG nötig - erzeugt automatisch eine Eröffnungsbuchung.
+          Negativ = überzogenes Konto. Sonst leer lassen (= 0).
+        </p>
       )}
 
       {error && <p className="bank-account-form__error">{error}</p>}

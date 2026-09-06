@@ -16,6 +16,7 @@ export interface BankAccount {
   created_at: string;
 }
 
+// frontend/src/features/bankAccounts/api.ts — BankAccountPayload ergänzen
 export interface BankAccountPayload {
   property_id: number;
   account_id: number;
@@ -26,6 +27,7 @@ export interface BankAccountPayload {
   bic?: string | null;
   valid_from: string;
   valid_to?: string | null;
+  opening_balance?: number;
 }
 
 export interface BankAccountUpdatePayload {

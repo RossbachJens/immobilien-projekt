@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.bank_accounts import BankAccountPurpose
 
 
+# backend/app/schemas/bank_accounts.py — BankAccountCreate ergänzen
 class BankAccountCreate(BaseModel):
     property_id: int
     account_id: int
@@ -16,6 +17,13 @@ class BankAccountCreate(BaseModel):
     bic: str | None = Field(default=None, min_length=8, max_length=11)
     valid_from: date
     valid_to: date | None = None
+    # Kein Feld auf property_bank_accounts selbst - der Kontostand ergibt
+    # sich immer aus journal_entries/entry_lines (fn_check_journal_balance).
+    # Bei Übernahme einer bestehenden WEG löst ein Wert ≠ 0 hier automatisch
+    # eine Eröffnungsbuchung gegen Konto 9000 aus: positiv = Guthaben (Soll
+    # Bankkonto), negativ = überzogenes Konto (Haben Bankkonto). Default 0 =
+    # keine Buchung, nur bei Neuanlage relevant.
+    opening_balance: float = 0
 
 
 class BankAccountUpdate(BaseModel):

@@ -11,7 +11,6 @@ import {
 } from "./useUnits";
 import "./UnitOwnerAssignments.css";
 
-// frontend/src/features/units/UnitOwnerAssignments.tsx — Props + Formular ergänzen
 interface UnitOwnerAssignmentsProps {
   unitId: number;
   unitNumber: string;
@@ -21,7 +20,14 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function UnitOwnerAssignments({ unitId }: UnitOwnerAssignmentsProps) {
+function suggestOwnerNumber(unitNumber: string, sequence: number): string {
+  // Nur ein Vorschlag nach dem Muster "Einheit + laufende Nummer" - frei
+  // überschreibbar, andere Nummernsysteme funktionieren genauso.
+  const unitDigits = unitNumber.replace(/\D/g, "") || "0";
+  return `${unitDigits.padStart(3, "0")}${String(sequence).padStart(2, "0")}`;
+}
+
+export function UnitOwnerAssignments({ unitId, unitNumber }: UnitOwnerAssignmentsProps) {
   const { data: history, isLoading } = useUnitOwners(unitId);
   const { data: owners } = useOwners();
   const assignOwnerMutation = useAssignOwner(unitId);
@@ -32,13 +38,13 @@ export function UnitOwnerAssignments({ unitId }: UnitOwnerAssignmentsProps) {
   const [ownerId, setOwnerId] = useState<number | "">("");
   const [ownershipShare, setOwnershipShare] = useState("");
   const [validFrom, setValidFrom] = useState(todayIso());
+  const [ownerNumber, setOwnerNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
-    // frontend/src/features/units/UnitOwnerAssignments.tsx — State ergänzen
+
   const [endingHistoryId, setEndingHistoryId] = useState<number | null>(null);
   const [endDate, setEndDate] = useState(todayIso());
   const [endError, setEndError] = useState<string | null>(null);
 
-  // handleAssign: owner_number mitschicken
   function handleAssign(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -62,9 +68,7 @@ export function UnitOwnerAssignments({ unitId }: UnitOwnerAssignmentsProps) {
     );
   }
 
-
-  // frontend/src/features/units/UnitOwnerAssignments.tsx — handleEndAssignment ersetzen
-function startEnding(historyId: number, validFrom: string) {
+  function startEnding(historyId: number, validFrom: string) {
     setEndingHistoryId(historyId);
     // Nur ein Vorschlag, kein fester Wert - ein Eigentümerwechsel wird oft
     // im Voraus (Notartermin) oder rückwirkend (Grundbucheintrag) erfasst.
@@ -101,17 +105,6 @@ function startEnding(historyId: number, validFrom: string) {
     return owner.company_name ?? `${owner.first_name ?? ""} ${owner.last_name}`.trim();
   }
 
-  function suggestOwnerNumber(unitNumber: string, sequence: number): string {
-  // Nur ein Vorschlag nach dem Muster "Einheit + laufende Nummer" - frei
-  // überschreibbar, andere Nummernsysteme funktionieren genauso.
-  const unitDigits = unitNumber.replace(/\D/g, "") || "0";
-  return `${unitDigits.padStart(3, "0")}${String(sequence).padStart(2, "0")}`;
-}
-
-export function UnitOwnerAssignments({ unitId, unitNumber }: UnitOwnerAssignmentsProps) {
-  // ... bestehende Hooks/State ...
-  const [ownerNumber, setOwnerNumber] = useState("");
-
   const current = history?.filter((h) => h.valid_to === null) ?? [];
   const past = history?.filter((h) => h.valid_to !== null) ?? [];
 
@@ -123,11 +116,10 @@ export function UnitOwnerAssignments({ unitId, unitNumber }: UnitOwnerAssignment
       {current.length === 0 && <p className="unit-owner-assignments__empty">Kein Eigentümer zugeordnet.</p>}
       {current.length > 0 && (
         <ul className="unit-owner-assignments__list">
-  // in der Anzeige (current.map), Eigentümernummer mit ausgeben:
-  {current.map((h) => (
-    <li key={h.history_id}>
-      {ownerLabel(h.owner_id)} · Anteil {h.ownership_share} · seit {h.valid_from}
-      {h.owner_number && <> · Nr. {h.owner_number}</>}
+          {current.map((h) => (
+            <li key={h.history_id}>
+              {ownerLabel(h.owner_id)} · Anteil {h.ownership_share} · seit {h.valid_from}
+              {h.owner_number && <> · Nr. {h.owner_number}</>}
               <button type="button" onClick={() => startEnding(h.history_id, h.valid_from)}>
                 Beenden
               </button>
@@ -170,6 +162,7 @@ export function UnitOwnerAssignments({ unitId, unitNumber }: UnitOwnerAssignment
             {past.map((h) => (
               <li key={h.history_id}>
                 {ownerLabel(h.owner_id)} · Anteil {h.ownership_share} · {h.valid_from} – {h.valid_to}
+                {h.owner_number && <> · Nr. {h.owner_number}</>}
                 <button type="button" onClick={() => handleDeleteAssignment(h.history_id)}>
                   Löschen
                 </button>
@@ -217,7 +210,6 @@ export function UnitOwnerAssignments({ unitId, unitNumber }: UnitOwnerAssignment
             Gültig ab
             <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} required />
           </label>
-            // im Formular, nach dem "Gültig ab"-Feld einfügen:
           <label>
             Eigentümernummer (optional)
             <div style={{ display: "flex", gap: "0.5rem" }}>
