@@ -2,12 +2,12 @@
 """
 Erzeugt die Einzelabrechnung (Jahresabrechnung je Einheit) als PDF - orientiert
 am Format der Muster-Datei "Einzelabrechnung 2024 Wohnung 4". Bewusst NICHT
-vollständig nachgebildet: § 35a EStG-Bescheinigung und Rücklagendarstellung/
-Vermögensaufstellung erfordern zusätzliche Datenmodellierung (Kategorisierung
-der Positionen, Bestandsführung der Rücklagenkonten) und sind als offener
-Punkt in PROJECTPLAN.md vermerkt. Dieser Export deckt den Kernteil ab:
-Kostenübersicht, Einzelabrechnung mit Verteilung je Position, Abrechnungsspitze.
+vollständig nachgebildet: die § 35a EStG-Bescheinigung ist weiterhin ein
+offener Punkt (siehe PROJECTPLAN.md). Die Rücklagendarstellung und
+Vermögensaufstellung ist seit Migration 0011 abgedeckt (optionaler Abschnitt,
+nur gerendert, wenn der Router Daten übergibt - siehe reserve_fund-Parameter).
 """
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -16,18 +16,51 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.models.abrechnung import SettlementPeriod, SettlementPosition, UnitSettlementShare, UnitSettlementSummary
 from app.models.stammdaten import Owner, Property, Unit
 from app.models.wirtschaftsplan import ResolutionCollection
 
 
-def _eur(value: float | Decimal) -> str:
-    """Deutsches Zahlenformat: 1.234,56 €."""
+@dataclass
+class ReserveFundPdfPosition:
+    """Eine Bewegungszeile der Rücklagendarstellung, bereits für diese eine
+    Einheit aufbereitet (unit_share) - siehe
+    app/routers/settlement_periods.py::_build_reserve_fund_pdf_data."""
+
+    movement_type_label: str
+    description: str | None
+    allocation_key_type: str
+    actual_amount: float
+    unit_share: float
+
+
+@dataclass
+class ReserveFundPdfData:
+    """Bündelt Rücklagendarstellung + Vermögensaufstellung für eine Einheit -
+    optionaler Parameter von build_settlement_pdf, da nicht jede Abrechnung
+    (noch) eine Rücklagendarstellung hat."""
+
+    reserve_balance_start: float
+    reserve_balance_start_unit_share: float
+    reserve_balance_end: float
+    reserve_balance_end_unit_share: float
+    positions: list[ReserveFundPdfPosition]
+    operating_balance_start: float
+    operating_balance_end: float
+
+
+def _de_number(value: float | Decimal) -> str:
+    """Deutsches Zahlenformat ohne Einheit: 1.234,56."""
     formatted = f"{float(value):,.2f}"
     formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"{formatted} €"
+    return formatted
+
+
+def _eur(value: float | Decimal) -> str:
+    """Deutsches Zahlenformat: 1.234,56 €."""
+    return f"{_de_number(value)} €"
 
 
 def _german_date(d: date) -> str:
@@ -38,6 +71,14 @@ def _owner_display_name(owner: Owner) -> str:
     if owner.company_name:
         return owner.company_name
     return f"{owner.first_name or ''} {owner.last_name}".strip()
+
+
+def _allocation_key_label(key_type: str) -> str:
+    if key_type == "MEA":
+        return "Miteigentumsanteile"
+    if key_type == "Wohnflaeche":
+        return "Wohnfläche"
+    return key_type
 
 
 def build_settlement_pdf(
@@ -51,6 +92,7 @@ def build_settlement_pdf(
     shares_by_position: dict[int, UnitSettlementShare],
     summary: UnitSettlementSummary | None,
     resolution: ResolutionCollection | None,
+    reserve_fund: ReserveFundPdfData | None = None,
 ) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -67,6 +109,28 @@ def build_settlement_pdf(
     heading = ParagraphStyle("SettlementHeading", parent=styles["Heading1"], fontSize=14, spaceAfter=6)
     small = ParagraphStyle("SettlementSmall", parent=styles["Normal"], fontSize=9, textColor=colors.grey)
     body = styles["Normal"]
+
+    def _info_table() -> Table:
+        """Objekt/Einheit-Block - wird sowohl im Kopf der Einzelabrechnung als
+        auch (falls vorhanden) am Anfang der Rücklagendarstellung gezeigt.
+        Baut jedes Mal ein frisches Table-Flowable, da dasselbe Objekt nicht
+        zweimal in einer reportlab-Story wiederverwendet werden sollte."""
+        info_data = [
+            ["Objekt:", property_.name],
+            ["", property_.address],
+            ["Einheit:", unit.unit_number + (f" – {unit.floor}" if unit.floor else "")],
+        ]
+        table = Table(info_data, colWidths=[30 * mm, 120 * mm])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("FONTSIZE", (0, 0), (-1, -1), 10),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+        return table
 
     story = []
 
@@ -85,22 +149,7 @@ def build_settlement_pdf(
         )
     )
 
-    info_data = [
-        ["Objekt:", property_.name],
-        ["", property_.address],
-        ["Einheit:", unit.unit_number + (f" – {unit.floor}" if unit.floor else "")],
-    ]
-    info_table = Table(info_data, colWidths=[30 * mm, 120 * mm])
-    info_table.setStyle(
-        TableStyle(
-            [
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
-    story.append(info_table)
+    story.append(_info_table())
     story.append(Spacer(1, 6 * mm))
 
     # --- Zusammenfassung ---
@@ -180,6 +229,118 @@ def build_settlement_pdf(
         )
     )
     story.append(position_table)
+
+    # --- Rücklagendarstellung & Vermögensaufstellung (optional) ---
+    if reserve_fund is not None:
+        story.append(PageBreak())
+        story.append(
+            Paragraph(
+                "Rücklagendarstellung und Vermögensaufstellung<br/>"
+                f"{_german_date(settlement.period_start)} - {_german_date(settlement.period_end)}",
+                heading,
+            )
+        )
+        story.append(_info_table())
+        story.append(Spacer(1, 6 * mm))
+
+        total_mea = property_.total_mea
+        unit_mea = unit.mea
+        if total_mea is not None and unit_mea is not None:
+            gesamt_mea_display, ihr_mea_display = _de_number(total_mea), _de_number(unit_mea)
+        else:
+            gesamt_mea_display, ihr_mea_display = "–", "–"
+
+        reserve_rows = [
+            ["Beschreibung", "Beträge", "Gesamtverteiler", "Ihr Anteil", "Verteilerschlüssel", "Ihr Betrag"]
+        ]
+        reserve_rows.append(
+            [
+                "Rücklagenbestand zum 01.01.",
+                _eur(reserve_fund.reserve_balance_start),
+                gesamt_mea_display,
+                ihr_mea_display,
+                "Miteigentumsanteile",
+                _eur(reserve_fund.reserve_balance_start_unit_share),
+            ]
+        )
+        for position in reserve_fund.positions:
+            label = position.movement_type_label + (
+                f" ({position.description})" if position.description else ""
+            )
+            if position.allocation_key_type == "MEA":
+                row_gesamt, row_ihr = gesamt_mea_display, ihr_mea_display
+            else:
+                row_gesamt, row_ihr = "–", "–"
+            reserve_rows.append(
+                [
+                    label,
+                    _eur(position.actual_amount),
+                    row_gesamt,
+                    row_ihr,
+                    _allocation_key_label(position.allocation_key_type),
+                    _eur(position.unit_share),
+                ]
+            )
+        reserve_rows.append(
+            [
+                "Rücklagenbestand zum 31.12.",
+                _eur(reserve_fund.reserve_balance_end),
+                gesamt_mea_display,
+                ihr_mea_display,
+                "Miteigentumsanteile",
+                _eur(reserve_fund.reserve_balance_end_unit_share),
+            ]
+        )
+
+        reserve_table = Table(
+            reserve_rows, colWidths=[45 * mm, 22 * mm, 22 * mm, 18 * mm, 30 * mm, 22 * mm]
+        )
+        reserve_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                    ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.black),
+                    ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                    ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.black),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        story.append(reserve_table)
+        story.append(Spacer(1, 8 * mm))
+
+        story.append(Paragraph("Vermögensaufstellung", styles["Heading2"]))
+        story.append(
+            Paragraph(
+                "Bewirtschaftungskonto(en) - Salden nicht auf Einheiten verteilt, nur Gesamtsumme "
+                "der Liegenschaft.",
+                small,
+            )
+        )
+        story.append(Spacer(1, 2 * mm))
+
+        asset_rows = [
+            ["Bewirtschaftungskonto 01.01.", _eur(reserve_fund.operating_balance_start)],
+            ["Bewirtschaftungskonto 31.12.", _eur(reserve_fund.operating_balance_end)],
+        ]
+        asset_table = Table(asset_rows, colWidths=[80 * mm, 40 * mm])
+        asset_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        story.append(asset_table)
 
     doc.build(story)
     return buffer.getvalue()

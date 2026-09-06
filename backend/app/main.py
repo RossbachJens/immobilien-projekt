@@ -3,9 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+# backend/app/main.py — Import ergänzen
 from app.routers import (
     accounts, allocation_keys, auth, bank_accounts, budget_plans, health,
-    journal_entries, meetings, owners, payments, properties, resolutions,
+    journal_entries, meetings, owners, payments, properties, reserve_fund, resolutions,
     settlement_periods, special_assessments, tenants, units, users,
 )
 
@@ -36,10 +37,12 @@ app.include_router(resolutions.router)
 app.include_router(special_assessments.router)
 app.include_router(budget_plans.router)
 app.include_router(settlement_periods.router)
+app.include_router(reserve_fund.router)
 app.include_router(payments.router)
 app.include_router(bank_accounts.router)
 app.include_router(allocation_keys.router)
 app.include_router(meetings.router)
+
 
 # Noch offen:
 #   - access_log-Middleware (protokolliert Zugriffe auf personenbezogene Daten)

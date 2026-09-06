@@ -1,0 +1,79 @@
+/* frontend/src/features/reserveFund/ReserveFundPositionForm.css */
+.reserve-fund-position-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 480px;
+  margin-top: var(--space-1);
+}
+
+.reserve-fund-position-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.reserve-fund-position-form input,
+.reserve-fund-position-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.reserve-fund-position-form__accounts {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.reserve-fund-position-form__hint-inline {
+  font-weight: 400;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.reserve-fund-position-form__account-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  display: flex;
+  padding: 0.15rem 0;
+}
+
+.reserve-fund-position-form__hint {
+  color: #666;
+  font-style: italic;
+}
+
+.reserve-fund-position-form__error {
+  color: var(--color-error);
+}
+
+.reserve-fund-position-form__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.reserve-fund-position-form__actions button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.reserve-fund-position-form__actions button[type="submit"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.reserve-fund-position-form__actions button[type="button"] {
+  background-color: var(--color-light);
+}

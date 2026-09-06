@@ -5,6 +5,7 @@ import { Card } from "../../components/Card";
 import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
 import { useProperties } from "../properties/useProperties";
+import { ReserveFundPanel } from "../reserveFund/ReserveFundPanel";
 import { useResolutions } from "../resolutions/useResolutions";
 import { useUnits } from "../units/useUnits";
 import type { SettlementPeriodPayload, SettlementPositionPayload, SettlementStatus } from "./api";
@@ -453,6 +454,13 @@ function SettlementPeriodDetails({
           </tbody>
         </table>
       )}
+
+      <ReserveFundPanel
+        settlementId={settlementId}
+        propertyId={propertyId}
+        periodStatus={periodStatus}
+        unitLabelFor={unitLabelFor}
+      />
     </div>
   );
 }

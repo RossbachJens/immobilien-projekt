@@ -1,4 +1,6 @@
 # backend/app/routers/settlement_periods.py
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func, or_, select
@@ -7,8 +9,9 @@ from sqlalchemy.orm import Session
 from io import BytesIO
 
 from app.core.access import accessible_property_ids
-from app.core.allocation import distribute_amount
+from app.core.allocation import compute_unit_fractions, distribute_amount
 from app.core.deps import get_current_user
+from app.core.reserve_accounts import cumulative_balance, reserve_account_ids
 from app.core.roles import resolve_role
 from app.db.session import get_db
 from app.models.abrechnung import (
@@ -19,6 +22,13 @@ from app.models.abrechnung import (
     UnitSettlementSummary,
 )
 from app.models.buchhaltung import Account, AccountType, EntryDirection, EntryLine, JournalEntry
+from app.models.reserve_fund import (
+    MOVEMENT_TYPE_LABELS,
+    ReserveFundPosition,
+    ReserveFundStatement,
+    ReserveFundStatementOperatingAccount,
+    ReserveFundUnitShare,
+)
 from app.models.stammdaten import Property, Unit, User
 from app.models.wirtschaftsplan import ResolutionCollection
 from app.schemas.settlement import (
@@ -33,7 +43,7 @@ from app.schemas.settlement import (
 )
 from app.models.stammdaten import Owner
 from app.models.zuordnungen import UnitOwnerHistory
-from app.services.settlement_pdf import build_settlement_pdf
+from app.services.settlement_pdf import ReserveFundPdfData, ReserveFundPdfPosition, build_settlement_pdf
 
 router = APIRouter(prefix="/settlement-periods", tags=["settlement-periods"])
 
@@ -241,6 +251,86 @@ def _get_current_owner(db: Session, unit_id: int) -> Owner | None:
         .join(UnitOwnerHistory, UnitOwnerHistory.owner_id == Owner.owner_id)
         .where(UnitOwnerHistory.unit_id == unit_id, UnitOwnerHistory.valid_to.is_(None))
         .limit(1)
+    )
+
+
+def _build_reserve_fund_pdf_data(
+    db: Session, settlement: SettlementPeriod, property_: Property, unit_id: int
+) -> ReserveFundPdfData | None:
+    """Bündelt alle für den PDF-Export einer Einheit nötigen Rücklagen-/
+    Vermögensdaten - liefert None, wenn für diese Abrechnung (noch) keine
+    Rücklagendarstellung angelegt wurde (siehe app/routers/reserve_fund.py)."""
+    statement = db.scalar(
+        select(ReserveFundStatement).where(ReserveFundStatement.settlement_id == settlement.settlement_id)
+    )
+    if statement is None:
+        return None
+
+    reserve_ids = reserve_account_ids(db, settlement.property_id)
+    day_before_start = settlement.period_start - timedelta(days=1)
+
+    reserve_balance_start = cumulative_balance(db, settlement.property_id, reserve_ids, day_before_start)
+    reserve_balance_end = cumulative_balance(db, settlement.property_id, reserve_ids, settlement.period_end)
+
+    # Der Rücklagenbestand selbst folgt gesetzlich immer den Miteigentums-
+    # anteilen (§ 16 WEG), unabhängig vom Verteilerschlüssel einzelner
+    # Positionen - daher hier fest "MEA".
+    mea_fractions = compute_unit_fractions(db, property_, "MEA", settlement.fiscal_year)
+    unit_fraction = mea_fractions.get(unit_id, 0.0)
+
+    positions = list(
+        db.scalars(
+            select(ReserveFundPosition).where(ReserveFundPosition.statement_id == statement.statement_id)
+        )
+    )
+    position_ids = [p.position_id for p in positions]
+    unit_shares = (
+        list(
+            db.scalars(
+                select(ReserveFundUnitShare).where(
+                    ReserveFundUnitShare.position_id.in_(position_ids),
+                    ReserveFundUnitShare.unit_id == unit_id,
+                )
+            )
+        )
+        if position_ids
+        else []
+    )
+    unit_share_by_position = {s.position_id: s.allocated_amount for s in unit_shares}
+
+    pdf_positions = [
+        ReserveFundPdfPosition(
+            movement_type_label=MOVEMENT_TYPE_LABELS.get(p.movement_type, p.movement_type),
+            description=p.description,
+            allocation_key_type=p.allocation_key_type,
+            actual_amount=p.actual_amount,
+            unit_share=unit_share_by_position.get(p.position_id, 0.0),
+        )
+        for p in positions
+    ]
+
+    operating_account_ids = list(
+        db.scalars(
+            select(ReserveFundStatementOperatingAccount.account_id).where(
+                ReserveFundStatementOperatingAccount.statement_id == statement.statement_id
+            )
+        )
+    )
+    operating_balance_start = cumulative_balance(
+        db, settlement.property_id, operating_account_ids, day_before_start
+    )
+    operating_balance_end = cumulative_balance(
+        db, settlement.property_id, operating_account_ids, settlement.period_end
+    )
+
+    return ReserveFundPdfData(
+        reserve_balance_start=round(reserve_balance_start, 2),
+        reserve_balance_start_unit_share=round(reserve_balance_start * unit_fraction, 2),
+        reserve_balance_end=round(reserve_balance_end, 2),
+        reserve_balance_end_unit_share=round(reserve_balance_end * unit_fraction, 2),
+        positions=pdf_positions,
+        operating_balance_start=round(operating_balance_start, 2),
+        operating_balance_end=round(operating_balance_end, 2),
     )
 
 
@@ -611,6 +701,8 @@ def export_unit_settlement_pdf(
     )
     resolution = db.get(ResolutionCollection, settlement.resolution_id) if settlement.resolution_id else None
 
+    reserve_fund_data = _build_reserve_fund_pdf_data(db, settlement, property_, unit_id)
+
     pdf_bytes = build_settlement_pdf(
         settlement=settlement,
         property_=property_,
@@ -621,6 +713,7 @@ def export_unit_settlement_pdf(
         shares_by_position=shares_by_position,
         summary=summary,
         resolution=resolution,
+        reserve_fund=reserve_fund_data,
     )
     
     filename = f"Abrechnung_{settlement.fiscal_year}_{unit.unit_number.replace(' ', '_')}.pdf"
@@ -629,4 +722,3 @@ def export_unit_settlement_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-    

@@ -1,0 +1,150 @@
+/* frontend/src/features/reserveFund/ReserveFundPanel.css */
+.reserve-fund-panel {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reserve-fund-panel__empty {
+  color: #777;
+  font-style: italic;
+}
+
+.reserve-fund-panel__error {
+  color: var(--color-error);
+}
+
+.reserve-fund-panel__balance-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.25rem;
+}
+
+.reserve-fund-panel__balance-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.reserve-fund-panel__balance-table td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reserve-fund-panel__control-row--off td {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.reserve-fund-panel__control-row--ok td {
+  color: var(--color-success);
+}
+
+.reserve-fund-panel__position summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.reserve-fund-panel__account {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.reserve-fund-panel__shares-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.reserve-fund-panel__shares-table th,
+.reserve-fund-panel__shares-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.reserve-fund-panel__position-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.reserve-fund-panel__position-actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.reserve-fund-panel__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reserve-fund-panel__actions button {
+  padding: 0.4rem 0.8rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.reserve-fund-panel__locked {
+  color: #777;
+  font-style: italic;
+}
+
+.reserve-fund-panel__hint {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.reserve-fund-panel__assets-heading {
+  margin-top: var(--space-1);
+}
+
+.reserve-fund-panel__operating-form {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 420px;
+}
+
+.reserve-fund-panel__operating-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.reserve-fund-panel__operating-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.reserve-fund-panel__operating-form-actions button {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.reserve-fund-panel__operating-form-actions button:first-child {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.reserve-fund-panel__operating-form-actions button:last-child {
+  background-color: var(--color-light);
+}

@@ -31,3 +31,12 @@ from app.models.abrechnung import (  # noqa: F401
 from app.models.bank_accounts import BankAccountPurpose, PropertyBankAccount  # noqa: F401
 
 from app.models.meetings import MeetingAgendaItem, OwnerMeeting  # noqa: F401
+
+# backend/app/models/__init__.py — ergänzen
+from app.models.reserve_fund import (  # noqa: F401
+    ReserveFundPosition,
+    ReserveFundPositionAccount,
+    ReserveFundStatement,
+    ReserveFundStatementOperatingAccount,
+    ReserveFundUnitShare,
+)
