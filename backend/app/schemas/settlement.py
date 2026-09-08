@@ -102,3 +102,72 @@ class UnitSettlementSummaryOut(BaseModel):
     # positiv = Nachzahlung/Abrechnungsspitze (Vorzeichen wie in der
     # Muster-Einzelabrechnung: "-70,85 € (Erstattung)").
     balance: float
+
+# backend/app/schemas/settlement.py — TaxCategory ergänzen (nach SettlementStatus)
+TaxCategory = Literal["keine", "haushaltsnahe_dienstleistung", "handwerkerleistung"]
+
+
+# SettlementPositionCreate ergänzen
+class SettlementPositionCreate(BaseModel):
+    account_ids: list[int] = Field(min_length=1)
+    description: str | None = Field(default=None, max_length=150)
+    allocation_key_type: str = Field(min_length=1, max_length=50)
+    is_apportionable: bool = False
+    # §35a EStG - siehe Migration 0012. 'keine' (Default) = Position ist
+    # steuerlich nicht relevant. Materialkosten sind bei BEIDEN übrigen
+    # Kategorien ausgeschlossen - deductible_amount ist bewusst getrennt von
+    # actual_amount, weil die Buchhaltung selbst keine Lohn-/Material-
+    # Trennung kennt (eine Rechnung wird als Ganzes gebucht).
+    tax_category: TaxCategory = "keine"
+    deductible_amount: float | None = Field(default=None, ge=0)
+
+    @field_validator("account_ids")
+    @classmethod
+    def _dedupe_account_ids(cls, value: list[int]) -> list[int]:
+        return list(dict.fromkeys(value))
+
+
+# SettlementPositionUpdate ergänzen
+class SettlementPositionUpdate(BaseModel):
+    account_ids: list[int] | None = None
+    description: str | None = Field(default=None, max_length=150)
+    allocation_key_type: str | None = Field(default=None, min_length=1, max_length=50)
+    is_apportionable: bool | None = None
+    tax_category: TaxCategory | None = None
+    deductible_amount: float | None = Field(default=None, ge=0)
+
+    @field_validator("account_ids")
+    @classmethod
+    def _validate_account_ids(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return value
+        if len(value) == 0:
+            raise ValueError("account_ids darf nicht leer sein, wenn angegeben.")
+        return list(dict.fromkeys(value))
+
+
+# Neue Klasse, z.B. vor SettlementPositionOut
+class UnitSettlementTaxShareOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    share_id: int
+    position_id: int
+    unit_id: int
+    allocated_deductible_amount: float
+
+
+# SettlementPositionOut ergänzen
+class SettlementPositionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    position_id: int
+    settlement_id: int
+    account_ids: list[int]
+    description: str | None
+    actual_amount: float
+    allocation_key_type: str
+    is_apportionable: bool
+    tax_category: TaxCategory
+    deductible_amount: float | None
+    unit_shares: list[UnitSettlementShareOut] = Field(default_factory=list)
+    tax_shares: list[UnitSettlementTaxShareOut] = Field(default_factory=list)

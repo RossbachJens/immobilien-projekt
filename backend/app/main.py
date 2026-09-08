@@ -4,8 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 # backend/app/main.py — Import ergänzen
+# backend/app/main.py — Import ergänzen
 from app.routers import (
-    accounts, allocation_keys, auth, bank_accounts, budget_plans, health,
+    accounts, allocation_keys, auth, bank_accounts, budget_plans, documents, health,
     journal_entries, meetings, owners, payments, properties, reserve_fund, resolutions,
     settlement_periods, special_assessments, tenants, units, users,
 )
@@ -42,6 +43,7 @@ app.include_router(payments.router)
 app.include_router(bank_accounts.router)
 app.include_router(allocation_keys.router)
 app.include_router(meetings.router)
+app.include_router(documents.router)
 
 
 # Noch offen:

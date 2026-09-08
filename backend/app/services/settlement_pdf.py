@@ -1,11 +1,12 @@
 # backend/app/services/settlement_pdf.py
 """
 Erzeugt die Einzelabrechnung (Jahresabrechnung je Einheit) als PDF - orientiert
-am Format der Muster-Datei "Einzelabrechnung 2024 Wohnung 4". Bewusst NICHT
-vollständig nachgebildet: die § 35a EStG-Bescheinigung ist weiterhin ein
-offener Punkt (siehe PROJECTPLAN.md). Die Rücklagendarstellung und
-Vermögensaufstellung ist seit Migration 0011 abgedeckt (optionaler Abschnitt,
-nur gerendert, wenn der Router Daten übergibt - siehe reserve_fund-Parameter).
+am Format der Muster-Datei "Einzelabrechnung 2024 Wohnung 4". Die Rücklagen-
+darstellung und Vermögensaufstellung ist seit Migration 0011 abgedeckt
+(optionaler Abschnitt, nur gerendert, wenn der Router Daten übergibt - siehe
+reserve_fund-Parameter). Die Bescheinigung i.S.d. § 35a EStG ist seit
+Migration 0012 abgedeckt (optionaler Abschnitt, siehe
+tax_certificate_positions-Parameter).
 """
 from dataclasses import dataclass
 from datetime import date
@@ -51,6 +52,22 @@ class ReserveFundPdfData:
     operating_balance_end: float
 
 
+@dataclass
+class TaxCertificatePdfPosition:
+    """Eine §35a-relevante Abrechnungsposition, für eine Einheit aufbereitet -
+    siehe app/routers/settlement_periods.py::_build_tax_certificate_pdf_data.
+    total_deductible_amount/unit_deductible_amount enthalten NUR den Lohn-/
+    Fahrt-/Maschinenkostenanteil (SettlementPosition.deductible_amount),
+    nicht die vollen Ist-Kosten der Position."""
+
+    description: str
+    tax_category: str  # 'haushaltsnahe_dienstleistung' | 'handwerkerleistung'
+    is_apportionable: bool
+    allocation_key_type: str
+    total_deductible_amount: float
+    unit_deductible_amount: float
+
+
 def _de_number(value: float | Decimal) -> str:
     """Deutsches Zahlenformat ohne Einheit: 1.234,56."""
     formatted = f"{float(value):,.2f}"
@@ -93,6 +110,7 @@ def build_settlement_pdf(
     summary: UnitSettlementSummary | None,
     resolution: ResolutionCollection | None,
     reserve_fund: ReserveFundPdfData | None = None,
+    tax_certificate_positions: list[TaxCertificatePdfPosition] | None = None,
 ) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -112,9 +130,10 @@ def build_settlement_pdf(
 
     def _info_table() -> Table:
         """Objekt/Einheit-Block - wird sowohl im Kopf der Einzelabrechnung als
-        auch (falls vorhanden) am Anfang der Rücklagendarstellung gezeigt.
-        Baut jedes Mal ein frisches Table-Flowable, da dasselbe Objekt nicht
-        zweimal in einer reportlab-Story wiederverwendet werden sollte."""
+        auch (falls vorhanden) am Anfang der Rücklagendarstellung/§35a-
+        Bescheinigung gezeigt. Baut jedes Mal ein frisches Table-Flowable,
+        da dasselbe Objekt nicht zweimal in einer reportlab-Story
+        wiederverwendet werden sollte."""
         info_data = [
             ["Objekt:", property_.name],
             ["", property_.address],
@@ -229,6 +248,98 @@ def build_settlement_pdf(
         )
     )
     story.append(position_table)
+
+    # --- Bescheinigung § 35a EStG (optional) ---
+    if tax_certificate_positions:
+        story.append(PageBreak())
+        story.append(
+            Paragraph(
+                f"Bescheinigung i.S.d. § 35a EStG für die Abrechnung<br/>"
+                f"{_german_date(settlement.period_start)} - {_german_date(settlement.period_end)}",
+                heading,
+            )
+        )
+        story.append(_info_table())
+        story.append(Spacer(1, 4 * mm))
+
+        total_mea = property_.total_mea
+        unit_mea = unit.mea
+        if total_mea is not None and unit_mea is not None:
+            gesamt_mea_display, ihr_mea_display = _de_number(total_mea), _de_number(unit_mea)
+        else:
+            gesamt_mea_display, ihr_mea_display = "–", "–"
+
+        category_marker = {"haushaltsnahe_dienstleistung": "2", "handwerkerleistung": "3"}
+
+        def _tax_table(positions_subset: list[TaxCertificatePdfPosition]) -> Table:
+            rows = [
+                ["", "", "Verteilungsrelevante\nBeträge", "Verteilungs-\nschlüssel", "Gesamt-\nverteiler", "Ihr\nAnteil", "Ihr\nBetrag"]
+            ]
+            total_gesamt = 0.0
+            total_ihr = 0.0
+            for p in positions_subset:
+                if p.allocation_key_type == "MEA":
+                    row_gesamt, row_ihr = gesamt_mea_display, ihr_mea_display
+                else:
+                    row_gesamt, row_ihr = "–", "–"
+                rows.append(
+                    [
+                        category_marker.get(p.tax_category, ""),
+                        p.description,
+                        _eur(p.total_deductible_amount),
+                        _allocation_key_label(p.allocation_key_type),
+                        row_gesamt,
+                        row_ihr,
+                        _eur(p.unit_deductible_amount),
+                    ]
+                )
+                total_gesamt += p.total_deductible_amount
+                total_ihr += p.unit_deductible_amount
+            rows.append(["", "Gesamt", _eur(total_gesamt), "", "", "", _eur(total_ihr)])
+
+            table = Table(rows, colWidths=[7 * mm, 43 * mm, 25 * mm, 24 * mm, 18 * mm, 15 * mm, 20 * mm])
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.black),
+                        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                        ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.black),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ]
+                )
+            )
+            return table
+
+        apportionable = [p for p in tax_certificate_positions if p.is_apportionable]
+        non_apportionable = [p for p in tax_certificate_positions if not p.is_apportionable]
+
+        if apportionable:
+            story.append(Paragraph("Umlagefähige haushaltsnahe Dienstleistungen/Handwerkerleistungen", styles["Heading2"]))
+            story.append(_tax_table(apportionable))
+            story.append(Spacer(1, 4 * mm))
+
+        if non_apportionable:
+            story.append(
+                Paragraph("Nicht umlagefähige haushaltsnahe Dienstleistungen/Handwerkerleistungen", styles["Heading2"])
+            )
+            story.append(_tax_table(non_apportionable))
+            story.append(Spacer(1, 4 * mm))
+
+        story.append(
+            Paragraph(
+                "2 § 35a Absatz 2 EStG Haushaltsnahe Dienstleistungen<br/>"
+                "3 § 35a Absatz 3 EStG Handwerkerleistungen<br/><br/>"
+                "Bescheinigt wird ausschließlich der Lohn-, Fahrt- und Maschinenkostenanteil - "
+                "Materialkosten sind nach § 35a EStG nicht begünstigt und in den ausgewiesenen "
+                "Beträgen nicht enthalten.",
+                small,
+            )
+        )
 
     # --- Rücklagendarstellung & Vermögensaufstellung (optional) ---
     if reserve_fund is not None:

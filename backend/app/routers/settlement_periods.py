@@ -20,6 +20,7 @@ from app.models.abrechnung import (
     SettlementPositionAccount,
     UnitSettlementShare,
     UnitSettlementSummary,
+    UnitSettlementTaxShare,
 )
 from app.models.buchhaltung import Account, AccountType, EntryDirection, EntryLine, JournalEntry
 from app.models.reserve_fund import (
@@ -40,10 +41,16 @@ from app.schemas.settlement import (
     SettlementPositionUpdate,
     UnitSettlementShareOut,
     UnitSettlementSummaryOut,
+    UnitSettlementTaxShareOut,
 )
 from app.models.stammdaten import Owner
 from app.models.zuordnungen import UnitOwnerHistory
-from app.services.settlement_pdf import ReserveFundPdfData, ReserveFundPdfPosition, build_settlement_pdf
+from app.services.settlement_pdf import (
+    ReserveFundPdfData,
+    ReserveFundPdfPosition,
+    TaxCertificatePdfPosition,
+    build_settlement_pdf,
+)
 
 router = APIRouter(prefix="/settlement-periods", tags=["settlement-periods"])
 
@@ -129,6 +136,63 @@ def _load_position_account_ids(db: Session, position_ids: list[int]) -> dict[int
     for row in rows:
         result.setdefault(row.position_id, []).append(row.account_id)
     return result
+
+
+def _load_position_tax_shares(db: Session, position_ids: list[int]) -> dict[int, list[UnitSettlementTaxShare]]:
+    if not position_ids:
+        return {}
+    rows = list(
+        db.scalars(select(UnitSettlementTaxShare).where(UnitSettlementTaxShare.position_id.in_(position_ids)))
+    )
+    result: dict[int, list[UnitSettlementTaxShare]] = {}
+    for row in rows:
+        result.setdefault(row.position_id, []).append(row)
+    return result
+
+
+def _validate_tax_category(tax_category: str, deductible_amount: float | None, actual_amount: float) -> None:
+    if tax_category == "keine":
+        return
+    if deductible_amount is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Bei haushaltsnahen Dienstleistungen/Handwerkerleistungen ist der Lohnanteil "
+            "(deductible_amount) anzugeben.",
+        )
+    if deductible_amount > actual_amount:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Der Lohnanteil ({deductible_amount:.2f} €) darf die Ist-Kosten der Position "
+            f"({actual_amount:.2f} €) nicht übersteigen.",
+        )
+
+
+def _replace_tax_shares(
+    db: Session, property_: Property, settlement: SettlementPeriod, position: SettlementPosition
+) -> list[UnitSettlementTaxShare]:
+    """Löscht bestehende §35a-Anteile der Position und legt sie bei
+    tax_category != 'keine' neu an - gleiche Verteilungslogik wie bei den
+    Ist-Kosten-Anteilen (unit_settlement_shares), nur mit deductible_amount
+    statt actual_amount als zu verteilendem Gesamtbetrag."""
+    db.query(UnitSettlementTaxShare).filter(UnitSettlementTaxShare.position_id == position.position_id).delete()
+
+    if position.tax_category == "keine" or not position.deductible_amount:
+        return []
+
+    unit_amounts = distribute_amount(
+        db, property_, position.deductible_amount, position.allocation_key_type, settlement.fiscal_year
+    )
+    tax_shares = [
+        UnitSettlementTaxShare(
+            position_id=position.position_id, unit_id=unit_id, allocated_deductible_amount=amount
+        )
+        for unit_id, amount in unit_amounts
+    ]
+    db.add_all(tax_shares)
+    db.flush()
+    for s in tax_shares:
+        db.refresh(s)
+    return tax_shares
 
 
 def _validate_settlement_accounts(db: Session, account_ids: list[int], property_id: int) -> None:
@@ -232,7 +296,10 @@ def _recompute_summaries(db: Session, settlement: SettlementPeriod) -> None:
 
 
 def _position_to_out(
-    position: SettlementPosition, account_ids: list[int], shares: list[UnitSettlementShare]
+    position: SettlementPosition,
+    account_ids: list[int],
+    shares: list[UnitSettlementShare],
+    tax_shares: list[UnitSettlementTaxShare] | None = None,
 ) -> SettlementPositionOut:
     return SettlementPositionOut(
         position_id=position.position_id,
@@ -242,7 +309,10 @@ def _position_to_out(
         actual_amount=position.actual_amount,
         allocation_key_type=position.allocation_key_type,
         is_apportionable=position.is_apportionable,
+        tax_category=position.tax_category,
+        deductible_amount=position.deductible_amount,
         unit_shares=[UnitSettlementShareOut.model_validate(s) for s in shares],
+        tax_shares=[UnitSettlementTaxShareOut.model_validate(s) for s in (tax_shares or [])],
     )
 
 def _get_current_owner(db: Session, unit_id: int) -> Owner | None:
@@ -332,6 +402,43 @@ def _build_reserve_fund_pdf_data(
         operating_balance_start=round(operating_balance_start, 2),
         operating_balance_end=round(operating_balance_end, 2),
     )
+
+
+def _build_tax_certificate_pdf_data(
+    db: Session, unit_id: int, positions: list[SettlementPosition]
+) -> list[TaxCertificatePdfPosition]:
+    """§35a-relevante Positionen dieser Abrechnung, für eine Einheit
+    aufbereitet - reine Projektion der bereits beim Anlegen/Aktualisieren
+    berechneten unit_settlement_tax_shares (siehe _replace_tax_shares), kein
+    erneutes distribute_amount hier."""
+    relevant = [p for p in positions if p.tax_category != "keine" and p.deductible_amount]
+    if not relevant:
+        return []
+
+    position_ids = [p.position_id for p in relevant]
+    tax_shares = list(
+        db.scalars(
+            select(UnitSettlementTaxShare).where(
+                UnitSettlementTaxShare.position_id.in_(position_ids),
+                UnitSettlementTaxShare.unit_id == unit_id,
+            )
+        )
+    )
+    share_by_position = {s.position_id: s for s in tax_shares}
+
+    return [
+        TaxCertificatePdfPosition(
+            description=p.description or "Position",
+            tax_category=p.tax_category,
+            is_apportionable=p.is_apportionable,
+            allocation_key_type=p.allocation_key_type,
+            total_deductible_amount=float(p.deductible_amount),
+            unit_deductible_amount=float(share_by_position[p.position_id].allocated_deductible_amount)
+            if p.position_id in share_by_position
+            else 0.0,
+        )
+        for p in relevant
+    ]
 
 
 @router.get("", response_model=list[SettlementPeriodOut])
@@ -434,9 +541,15 @@ def list_settlement_positions(
         shares_by_position.setdefault(s.position_id, []).append(s)
 
     accounts_by_position = _load_position_account_ids(db, position_ids)
+    tax_shares_by_position = _load_position_tax_shares(db, position_ids)
 
     return [
-        _position_to_out(p, accounts_by_position.get(p.position_id, []), shares_by_position.get(p.position_id, []))
+        _position_to_out(
+            p,
+            accounts_by_position.get(p.position_id, []),
+            shares_by_position.get(p.position_id, []),
+            tax_shares_by_position.get(p.position_id, []),
+        )
         for p in positions
     ]
 
@@ -464,6 +577,7 @@ def create_settlement_position(
     actual_amount = _compute_actual_amount(
         db, settlement.property_id, payload.account_ids, settlement.period_start, settlement.period_end
     )
+    _validate_tax_category(payload.tax_category, payload.deductible_amount, actual_amount)
 
     property_ = db.get(Property, settlement.property_id)
     unit_amounts = distribute_amount(
@@ -476,6 +590,8 @@ def create_settlement_position(
         actual_amount=actual_amount,
         allocation_key_type=payload.allocation_key_type,
         is_apportionable=payload.is_apportionable,
+        tax_category=payload.tax_category,
+        deductible_amount=payload.deductible_amount if payload.tax_category != "keine" else None,
     )
     db.add(position)
     db.flush()  # vergibt position.position_id, wird für Konten-Zuordnung und Shares gebraucht
@@ -490,14 +606,22 @@ def create_settlement_position(
         for unit_id, amount in unit_amounts
     ]
     db.add_all(shares)
+    db.flush()
+    for s in shares:
+        db.refresh(s)
+
+    tax_shares = _replace_tax_shares(db, property_, settlement, position)
+
     db.commit()
     db.refresh(position)
     for s in shares:
         db.refresh(s)
+    for s in tax_shares:
+        db.refresh(s)
 
     _recompute_summaries(db, settlement)
 
-    return _position_to_out(position, payload.account_ids, shares)
+    return _position_to_out(position, payload.account_ids, shares, tax_shares)
 @router.patch("/{settlement_id}/positions/{position_id}", response_model=SettlementPositionOut)
 def update_settlement_position(
     settlement_id: int,
@@ -548,6 +672,13 @@ def update_settlement_position(
         db, settlement.property_id, effective_account_ids, settlement.period_start, settlement.period_end
     )
 
+    # tax_category ohne (neue) Angabe von deductible_amount würde sonst den
+    # alten Wert stehen lassen, auch wenn die Kategorie inzwischen auf
+    # 'keine' zurückgesetzt wurde - deshalb bei 'keine' immer explizit löschen.
+    if position.tax_category == "keine":
+        position.deductible_amount = None
+    _validate_tax_category(position.tax_category, position.deductible_amount, position.actual_amount)
+
     property_ = db.get(Property, settlement.property_id)
     db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
     unit_amounts = distribute_amount(
@@ -558,14 +689,22 @@ def update_settlement_position(
         for unit_id, amount in unit_amounts
     ]
     db.add_all(shares)
+    db.flush()
+    for s in shares:
+        db.refresh(s)
+
+    tax_shares = _replace_tax_shares(db, property_, settlement, position)
+
     db.commit()
     db.refresh(position)
     for s in shares:
         db.refresh(s)
+    for s in tax_shares:
+        db.refresh(s)
 
     _recompute_summaries(db, settlement)
 
-    return _position_to_out(position, effective_account_ids, shares)
+    return _position_to_out(position, effective_account_ids, shares, tax_shares)
 
 
 @router.delete("/{settlement_id}/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -592,6 +731,7 @@ def delete_settlement_position(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Position nicht gefunden")
 
     db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
+    db.query(UnitSettlementTaxShare).filter(UnitSettlementTaxShare.position_id == position.position_id).delete()
     db.query(SettlementPositionAccount).filter(
         SettlementPositionAccount.position_id == position.position_id
     ).delete()
@@ -624,6 +764,13 @@ def recalculate_settlement(
         position.actual_amount = _compute_actual_amount(
             db, settlement.property_id, account_ids, settlement.period_start, settlement.period_end
         )
+
+        # Automatische Neuberechnung darf nicht an einem inzwischen zu hohen,
+        # manuell erfassten Lohnanteil scheitern - defensives Kappen statt
+        # Fehler, da recalculate mehrere Positionen in einem Rutsch verarbeitet.
+        if position.deductible_amount is not None and position.deductible_amount > position.actual_amount:
+            position.deductible_amount = position.actual_amount
+
         db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
 
         unit_amounts = distribute_amount(
@@ -637,7 +784,9 @@ def recalculate_settlement(
         db.flush()
         for s in shares:
             db.refresh(s)
-        result.append(_position_to_out(position, account_ids, shares))
+
+        tax_shares = _replace_tax_shares(db, property_, settlement, position)
+        result.append(_position_to_out(position, account_ids, shares, tax_shares))
 
     db.commit()
     _recompute_summaries(db, settlement)
@@ -702,6 +851,7 @@ def export_unit_settlement_pdf(
     resolution = db.get(ResolutionCollection, settlement.resolution_id) if settlement.resolution_id else None
 
     reserve_fund_data = _build_reserve_fund_pdf_data(db, settlement, property_, unit_id)
+    tax_certificate_positions = _build_tax_certificate_pdf_data(db, unit_id, positions)
 
     pdf_bytes = build_settlement_pdf(
         settlement=settlement,
@@ -714,6 +864,7 @@ def export_unit_settlement_pdf(
         summary=summary,
         resolution=resolution,
         reserve_fund=reserve_fund_data,
+        tax_certificate_positions=tax_certificate_positions,
     )
     
     filename = f"Abrechnung_{settlement.fiscal_year}_{unit.unit_number.replace(' ', '_')}.pdf"

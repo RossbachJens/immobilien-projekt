@@ -26,6 +26,8 @@ import { MeetingsPage } from "../features/meetings/MeetingsPage";
 import { AllocationKeysPage } from "../features/allocationKeys/AllocationKeysPage";
 // frontend/src/routes/AppRoutes.tsx — Import + Route ergänzen
 import { HausgeldOverviewPage } from "../features/hausgeldOverview/HausgeldOverviewPage";
+// frontend/src/routes/AppRoutes.tsx — Import ergänzen
+import { DocumentsPage } from "../features/documents/DocumentsPage";
 
 // ...
 
@@ -51,6 +53,7 @@ export function AppRoutes() {
         <Route path="/meetings" element={<ProtectedRoute><MeetingsPage /></ProtectedRoute>} />
         <Route path="/allocation-keys" element={<ProtectedRoute><AllocationKeysPage /></ProtectedRoute>} />
         <Route path="/hausgeld-overview" element={<ProtectedRoute><HausgeldOverviewPage /></ProtectedRoute>} />
+        <Route path="/documents" element={<ProtectedRoute><DocumentsPage /></ProtectedRoute>} />
         <Route
           path="/users"
           element={

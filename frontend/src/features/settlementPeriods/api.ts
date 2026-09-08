@@ -3,6 +3,15 @@ import { apiClient } from "../../api/client";
 
 export type SettlementStatus = "Entwurf" | "Beschlossen" | "Inaktiv";
 
+export type TaxCategory = "keine" | "haushaltsnahe_dienstleistung" | "handwerkerleistung";
+
+export interface UnitSettlementTaxShare {
+  share_id: number;
+  position_id: number;
+  unit_id: number;
+  allocated_deductible_amount: number;
+}
+
 export interface SettlementPeriod {
   settlement_id: number;
   property_id: number;
@@ -44,7 +53,10 @@ export interface SettlementPosition {
   actual_amount: number;
   allocation_key_type: string;
   is_apportionable: boolean;
+  tax_category: TaxCategory;
+  deductible_amount: number | null;
   unit_shares: UnitSettlementShare[];
+  tax_shares: UnitSettlementTaxShare[];
 }
 
 export interface SettlementPositionPayload {
@@ -52,13 +64,18 @@ export interface SettlementPositionPayload {
   description?: string | null;
   allocation_key_type: string;
   is_apportionable: boolean;
+  tax_category: TaxCategory;
+  deductible_amount?: number | null;
 }
+
 
 export interface SettlementPositionUpdatePayload {
   account_ids?: number[];
   description?: string | null;
   allocation_key_type?: string;
   is_apportionable?: boolean;
+  tax_category?: TaxCategory;
+  deductible_amount?: number | null;
 }
 
 export interface UnitSettlementSummary {

@@ -140,6 +140,32 @@
   nur indirekt über `AllocationKeyField` (das Auswahl-Widget in Wirtschaftsplan-,
   Sonderumlage- und Abrechnungsformularen) referenzierbar, nicht aber eigenständig
   anlegbar/schließbar.
+- **§ 35a EStG – Bescheinigung als Erweiterung der Abrechnungspositionen:**
+  `settlement_positions` bekommt `tax_category` (VARCHAR+CHECK: `keine` /
+  `haushaltsnahe_dienstleistung` / `handwerkerleistung`) und `deductible_amount`
+  (der bescheinigungsfähige Lohn-/Fahrt-/Maschinenkostenanteil, getrennt vom
+  vollen `actual_amount`) - Materialkosten sind bei BEIDEN Kategorien von der
+  Steuerermäßigung ausgeschlossen, nicht nur bei Handwerkerleistungen (dort fällt
+  die Trennung wegen des typischerweise höheren Materialanteils nur praktisch
+  stärker ins Gewicht). Eine eigene Tabelle `unit_settlement_tax_shares` verteilt
+  ausschließlich `deductible_amount` auf Einheiten (gleiche Verteilungslogik wie
+  `unit_settlement_shares`, andere Bemessungsgrundlage) - bewusst keine
+  Wiederverwendung der bestehenden Ist-Kosten-Anteile, da diese den vollen (nicht
+  bescheinigungsfähigen) Betrag abbilden. Kein DB-CHECK
+  `deductible_amount <= actual_amount`, da eine spätere "Neu berechnen"-Aktion
+  den `actual_amount` ändern kann - die Prüfung läuft stattdessen im Router, mit
+  defensivem Kappen in `recalculate_settlement`.
+- **Dokumentenverwaltung (DMS) – Dateiinhalt als BYTEA in Postgres:** `documents`
+  speichert den Dateiinhalt direkt in der Datenbank statt auf einem separaten
+  Dateisystem/Objektspeicher - einfacherer Betrieb (ein Backup-Ziel, kein
+  Volume-Handling), auf Kosten von DB-/Backup-Größe bei vielen/großen Dateien;
+  serverseitig auf 20 MB je Datei begrenzt. Optionale, gezielte Verknüpfung mit
+  Einheit/Eigentümer/Mieter/Abrechnung/Buchung/Versammlung (alle nullable FKs,
+  analog `entry_lines`). Dreistufige `visibility` (`intern`/`eigentuemer`/`alle`)
+  steuert die Sichtbarkeit für Eigentümer bzw. zusätzlich Mieter; unabhängig davon
+  bleibt ein gezielt an eine andere Einheit/Person gebundenes Dokument für Dritte
+  verborgen. Listenabfragen laden den Dateiinhalt bewusst nicht mit (SQLAlchemy
+  `defer(Document.content)`), nur der Download-Endpunkt fragt ihn gezielt ab.
 
 
 
@@ -211,17 +237,21 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 | 2 | Stammdaten | CRUD für properties/units/owners/tenants, Soft-Delete, Eigentümerzuordnung je Einheit | 1 |
 | 3 | Buchhaltung | Journal/Entry-Lines, Soll=Haben-Trigger (`02_triggers.sql`), Storno-Flow, Kontenrahmen global + liegenschaftseigen | 2 |
 | 4 | Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung | Wirtschaftspläne je Objekt/Jahr (`budget_plans`, `budget_positions`), Verteilung je Einheit nach MEA/Umlageschlüssel (`unit_budget_shares`), Sonderumlagen (`special_assessments`, `unit_special_assessment_shares`), Beschluss-Sammlung § 24 WEG (`resolution_collection`, dauerhaft aufbewahrt, kein regulärer Soft-Delete-Lifecycle) | 2, 3 |
-| 5 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung (`unit_allocation_keys` mit Gültigkeitszeitraum, Wechsel nur zum 01.01. wirksam), Zahlungseingang, PDF-Export je Einheit (siehe Beispiel „Einzelabrechnung 2024 Wohnung 4") | 3, 4 |
+| 5 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung (`unit_allocation_keys` mit Gültigkeitszeitraum, Wechsel nur zum 01.01. wirksam), Zahlungseingang, PDF-Export je Einheit (siehe Beispiel „Einzelabrechnung 2024 Wohnung 4"), Rücklagendarstellung/Vermögensaufstellung, Bescheinigung i.S.d. § 35a EStG | 3, 4 |
 | 6 | Reale Bankkonten je Liegenschaft | `property_bank_accounts` (Trennungsgebot § 27 Abs. 5 WEG), Girokonto/Rücklagenkonten mit Gültigkeitszeitraum statt `is_active` | 3 |
 | 7 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups, Key-Rotation, E2E-Tests, PostgreSQL-RLS-Durchsetzung, Google-SSO-Login-Flow, `access_log`-Middleware, produktiver E-Mail-Versand | laufend |
 | 8 | Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt, ursprünglich nicht in der Phasenliste)* | `owner_meetings`, `meeting_agenda_items`, Verknüpfung mit `resolution_collection`, Einladung/Niederschrift als PDF (WeasyPrint), Umlaufbeschluss über dieselbe Struktur | 4 |
 | 9 | Mietsollstellung & SEPA *(verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)* | `03_procedures.sql`, Pain.008-XML-Export | 3 |
+| 10 | Dokumentenverwaltung (DMS) *(informell ergänzt, ursprünglich nicht in der Phasenliste)* | `documents`-Tabelle (Dateiinhalt als BYTEA), Upload/Download/Löschen, optionale Verknüpfung mit Einheit/Eigentümer/Mieter/Abrechnung/Buchung/Versammlung, dreistufige Sichtbarkeit | 2 |
 
 > **Hinweis:** Phase 6 wurde inhaltlich von "Mietsollstellung & SEPA" auf "Reale Bankkonten je
 > Liegenschaft" umgewidmet, da das Trennungsgebot (§ 27 Abs. 5 WEG) fachlich früher benötigt
 > wurde. Mietsollstellung/SEPA-Export laufen dafür als eigene, spätere Phase 9. Phase 8
 > (Eigentümerversammlungen) wurde zusätzlich zur ursprünglichen Planung ergänzt, weil sie in
-> der Praxis vor Phase 7 (Härtung) gebraucht wurde.
+> der Praxis vor Phase 7 (Härtung) gebraucht wurde. Phase 5 wurde nachträglich um die
+> Rücklagendarstellung/Vermögensaufstellung sowie die Bescheinigung i.S.d. § 35a EStG
+> erweitert. Phase 10 (Dokumentenverwaltung) wurde zusätzlich ergänzt, unabhängig von der
+> ursprünglichen Phasenliste.
 
 ## Meilensteine je Phase
 - **Phase 0:** `docker-compose up` startet DB + FastAPI `/health` + React-Grundgerüst mit
@@ -241,19 +271,24 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - **Phase 5:** Vollständige Betriebskostenabrechnung für ein Testobjekt als PDF (Format
   orientiert an der Beispiel-Jahresabrechnung im Projekt). ✅ erledigt — inkl. PDF-Export,
   Zahlungseingang (in die Buchhaltungsseite integriert, `features/payments`, kein
-  eigener Menüpunkt) und eigenständigem Umlageschlüssel-CRUD-Modul (`features/allocationKeys`).
+  eigener Menüpunkt) und eigenständigem Umlageschlüssel-CRUD-Modul (`features/allocationKeys`),
+  außerdem Rücklagendarstellung/Vermögensaufstellung (`features/reserveFund`) sowie eine
+  Bescheinigung i.S.d. § 35a EStG als weiterer optionaler PDF-Abschnitt.
 - **Phase 6:** Jede Liegenschaft verfügt über mindestens ein Giro- und ein Rücklagenkonto mit
   eigener IBAN und Gültigkeitszeitraum. ✅ erledigt
 - **Phase 7:** Vor Produktivbetrieb abgeschlossen. *(offen)*
 - **Phase 8:** Eine Eigentümerversammlung kann angelegt, Einladung und Niederschrift als PDF
   erzeugt und Beschlüsse daraus in die Beschluss-Sammlung übernommen werden; ein
-  Umlaufbeschluss läuft über dieselbe Struktur. ✅ Kernfunktion erledigt; eine Erweiterung um
-  eine strukturierte Niederschrift (Kopfdaten wie Versammlungsleiter/Protokollführer/
-  Endzeit/vertretene Anteile/Beschlussfähigkeit, TOP-weiser Protokolltext, Abstimmungs-
-  ergebnisse je Beschluss) ist im Backend fertig (Migration `0007`,
-  `PATCH /meetings/{meeting_id}/agenda-items/{item_id}`) - das zugehörige
-  Eingabeformular im Frontend steht noch aus.
+  Umlaufbeschluss läuft über dieselbe Struktur. ✅ erledigt, inklusive der strukturierten
+  Niederschrift (Kopfdaten wie Versammlungsleiter/Protokollführer/Endzeit/vertretene
+  Anteile/Beschlussfähigkeit, TOP-weiser Protokolltext, Abstimmungsergebnisse je Beschluss)
+  samt zugehörigem Eingabeformular im Frontend.
 - **Phase 9:** Gültige Pain.008-Datei für einen Lastschriftlauf. *(offen)*
+- **Phase 10:** Kontoauszüge, Rechnungen, Angebote und weitere Belege lassen sich je
+  Liegenschaft hochladen, kategorisieren, optional gezielt verknüpfen (Einheit/Eigentümer/
+  Mieter/Abrechnung/Buchung/Versammlung) und gestaffelt sichtbar machen. ✅ erledigt —
+  automatische Ablage generierter PDFs (Einladungen, Niederschriften, Abrechnungen) im DMS
+  ist noch offen.
 
 
 ## Status
@@ -263,15 +298,14 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - [x] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung sowie Frontend für Properties/Units/Owners/Tenants ✅)*
 - [x] Phase 3 — Buchhaltung *(Kontenrahmen global + liegenschaftseigen, Journal-Erfassung mit Soll=Haben-Trigger, Storno-Flow, Frontend inkl. Kontenverwaltung je Liegenschaft ✅)*
 - [x] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung *(Backend + Frontend ✅; Positionen bis zur Beschlussfassung editierbar/löschbar ✅)*
-- [x] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export, Zahlungseingang (integriert in die Buchhaltungsseite) und eigenständiges Umlageschlüssel-CRUD-Modul ✅)*
+- [x] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export, Zahlungseingang (integriert in die Buchhaltungsseite) und eigenständiges Umlageschlüssel-CRUD-Modul ✅; zusätzlich Rücklagendarstellung/Vermögensaufstellung und Bescheinigung i.S.d. § 35a EStG ✅)*
 - [x] Phase 6 — Reale Bankkonten je Liegenschaft *(`property_bank_accounts` mit Gültigkeitszeitraum ✅)*
 - [ ] Phase 7 — Härtung & Betrieb *(offen: RLS-Durchsetzung, Google-SSO-Flow, `access_log`-Middleware, produktiver E-Mail-Versand, Rate-Limiting, Backups, Key-Rotation, E2E-Tests)*
-- [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅; strukturierte Niederschrift (Kopfdaten, TOP-Protokolltext, Abstimmungsergebnisse) im Backend fertig, Frontend-Formular offen)*
+- [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅; strukturierte Niederschrift inkl. Kopfdaten, TOP-Protokolltext, Abstimmungsergebnissen und zugehörigem Frontend-Formular ✅)*
 - [ ] Phase 9 — Mietsollstellung & SEPA *(offen, verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)*
+- [x] Phase 10 — Dokumentenverwaltung (DMS) *(informell ergänzt; Upload/Download/Löschen mit Kategorien, optionaler Verknüpfung und gestaffelter Sichtbarkeit ✅; automatische Archivierung generierter PDFs offen)*
 
 ### Bewusst zurückgestellt (kein eigener Phasen-Slot)
-- § 35a EStG-Bescheinigung (Haushaltsnahe Dienstleistungen/Handwerkerleistungen)
-- Rücklagendarstellung und Vermögensaufstellung
 - Mieterseitige Betriebskostenabrechnung (aktuell nur eigentümerseitige Nebenkostenabrechnung)
-- „Dokumente"-Navigationseintrag (zentrale Übersicht aller erzeugten PDFs - Einladungen,
-  Niederschriften, Jahresabrechnungen - liegen bisher nur verstreut je Feature-Seite vor
+- Automatische Archivierung generierter PDFs (Einladungen, Niederschriften, Jahresabrechnungen)
+  im DMS (`documents`) - aktuell nur manueller Upload, generierte PDFs bleiben reine Downloads

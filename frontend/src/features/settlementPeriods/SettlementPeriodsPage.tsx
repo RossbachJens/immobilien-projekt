@@ -340,6 +340,10 @@ function SettlementPeriodDetails({
             {position.description ?? position.account_ids.map(accountLabelFor).join(", ")} ·{" "}
             {position.actual_amount.toFixed(2)} € · {position.allocation_key_type}
             {!position.is_apportionable && " · nicht umlagefähig"}
+            {position.tax_category !== "keine" && (
+              <> · § 35a ({position.tax_category === "haushaltsnahe_dienstleistung" ? "haushaltsnah" : "Handwerker"}
+              , {position.deductible_amount?.toFixed(2)} € Lohnanteil)</>
+            )}
           </summary>
           <p className="settlement-period-details__account">
             Konten: {position.account_ids.map(accountLabelFor).join(", ")}
@@ -360,6 +364,27 @@ function SettlementPeriodDetails({
                 ))}
               </tbody>
             </table>
+            {position.tax_shares.length > 0 && (
+              <>
+                <p className="settlement-period-details__account">§ 35a-Lohnanteil je Einheit</p>
+                <table className="settlement-period-details__shares-table">
+                  <thead>
+                    <tr>
+                      <th>Einheit</th>
+                      <th>Anteiliger Lohnanteil</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {position.tax_shares.map((share) => (
+                      <tr key={share.share_id}>
+                        <td>{unitLabelFor(share.unit_id)}</td>
+                        <td>{share.allocated_deductible_amount.toFixed(2)} €</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
             {isDraft && (
               <div className="settlement-period-details__position-actions">
                 <button type="button" onClick={() => startEditing(position.position_id)}>

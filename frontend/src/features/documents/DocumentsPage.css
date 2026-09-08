@@ -1,0 +1,64 @@
+/* frontend/src/features/documents/DocumentsPage.css */
+.documents-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.documents-page__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  max-width: 320px;
+  margin-top: var(--space-1);
+}
+
+.documents-page__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.documents-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.documents-page__header button {
+  padding: 0.6rem 1rem;
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.documents-page__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-1);
+}
+
+.documents-page__table th,
+.documents-page__table td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.documents-page__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.documents-page__actions button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}

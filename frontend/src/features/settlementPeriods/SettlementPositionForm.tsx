@@ -6,10 +6,16 @@ import { AllocationKeyField } from "../../components/AllocationKeyField";
 import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
 
-import type { SettlementPosition, SettlementPositionPayload } from "./api";
+import type { SettlementPosition, SettlementPositionPayload, TaxCategory } from "./api";
 import "./SettlementPositionForm.css";
 
 const STANDARD_KEYS = ["MEA", "Wohnflaeche"];
+
+const TAX_CATEGORY_LABELS: Record<TaxCategory, string> = {
+  keine: "Keine (steuerlich nicht relevant)",
+  haushaltsnahe_dienstleistung: "Haushaltsnahe Dienstleistung (§ 35a Abs. 2 EStG)",
+  handwerkerleistung: "Handwerkerleistung (§ 35a Abs. 3 EStG)",
+};
 
 interface SettlementPositionFormProps {
   propertyId: number;
@@ -53,6 +59,10 @@ export function SettlementPositionForm({
   const [customKey, setCustomKey] = useState(
     !initialIsStandardKey ? initialValues?.allocation_key_type ?? "" : "",
   );
+  const [taxCategory, setTaxCategory] = useState<TaxCategory>(initialValues?.tax_category ?? "keine");
+  const [deductibleAmount, setDeductibleAmount] = useState(
+    initialValues?.deductible_amount != null ? String(initialValues.deductible_amount) : "",
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function toggleAccount(accountId: number, checked: boolean) {
@@ -68,11 +78,17 @@ export function SettlementPositionForm({
       setValidationError("Bitte mindestens ein Konto auswählen.");
       return;
     }
+    if (taxCategory !== "keine" && !deductibleAmount) {
+      setValidationError("Bei haushaltsnahen Dienstleistungen/Handwerkerleistungen bitte den Lohnanteil angeben.");
+      return;
+    }
     onSubmit({
       account_ids: accountIds,
       description: description || null,
       allocation_key_type: keyMode === "standard" ? standardKey : customKey,
       is_apportionable: isApportionable,
+      tax_category: taxCategory,
+      deductible_amount: taxCategory === "keine" ? null : Number(deductibleAmount),
     });
   }
 
@@ -130,8 +146,43 @@ export function SettlementPositionForm({
       </label>
       <label className="settlement-position-form__checkbox">
         <input type="checkbox" checked={isApportionable} onChange={(e) => setIsApportionable(e.target.checked)} />
-        Umlagefähig (§ 35a EStG / Betriebskosten)
+        Umlagefähig (Betriebskosten)
       </label>
+
+      <fieldset className="settlement-position-form__accounts">
+        <legend>§ 35a EStG</legend>
+        <label>
+          Steuerliche Kategorie
+          <select value={taxCategory} onChange={(e) => setTaxCategory(e.target.value as TaxCategory)}>
+            {(Object.keys(TAX_CATEGORY_LABELS) as TaxCategory[]).map((c) => (
+              <option key={c} value={c}>
+                {TAX_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {taxCategory !== "keine" && (
+          <>
+            <label>
+              Lohnanteil (€) *
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                max={initialValues?.actual_amount}
+                value={deductibleAmount}
+                onChange={(e) => setDeductibleAmount(e.target.value)}
+                placeholder="nur Lohn-/Fahrt-/Maschinenkosten, ohne Material"
+                required
+              />
+            </label>
+            <p className="settlement-position-form__hint-inline">
+              Nur der Arbeitskostenanteil ist nach § 35a EStG bescheinigungsfähig - Materialkosten
+              (Ersatzteile, Baustoffe) bitte herausrechnen.
+            </p>
+          </>
+        )}
+      </fieldset>
 
       <AllocationKeyField
         mode={keyMode}

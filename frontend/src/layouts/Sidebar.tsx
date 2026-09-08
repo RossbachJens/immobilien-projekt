@@ -24,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/allocation-keys", label: "Umlageschlüssel" },
   { to: "/bank-accounts", label: "Bankkonten" },
   { to: "/meetings", label: "Versammlungen" },
+  { to: "/documents", label: "Dokumente" },
   
 ];
 
