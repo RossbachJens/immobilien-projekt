@@ -9,8 +9,18 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Datenbank
-    database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/immobilien"
+    # Datenbank - Laufzeitverbindung der Anwendung. Verbindet sich als
+    # eingeschränkter 'app_user' (siehe Migration
+    # 0014_row_level_security), NICHT als Superuser - sonst würden Row-
+    # Level-Security-Policies vollständig ignoriert (Superuser umgehen RLS
+    # grundsätzlich, unabhängig von den Policies selbst).
+    database_url: str = "postgresql+psycopg://app_user:app_user_dev_password@db:5432/immobilien"
+
+    # Datenbank - Verbindung für Alembic-Migrationen. Braucht Superuser-
+    # Rechte (DDL, CREATE ROLE, GRANT, ...) - bewusst von database_url
+    # getrennt, damit ein Rollentausch der Laufzeit-Verbindung nicht
+    # versehentlich auch Migrationen betrifft (siehe alembic/env.py).
+    migration_database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/immobilien"
 
     # Auth
     jwt_secret: str = "change-me-in-production"

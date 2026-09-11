@@ -1,6 +1,8 @@
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.rls import apply_rls_context
+from app.core.roles import resolve_role
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.stammdaten import User
@@ -11,7 +13,10 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     """Liest das httpOnly-Cookie 'access_token', dekodiert das JWT und laedt
-    den zugehoerigen User. Wirft 401, wenn irgendein Schritt fehlschlaegt."""
+    den zugehoerigen User. Wirft 401, wenn irgendein Schritt fehlschlaegt.
+    Setzt zusätzlich den RLS-Kontext (app/core/rls.py) für die restliche
+    Dauer des Requests, sobald die Rolle feststeht - zweite
+    Verteidigungslinie neben der Query-Filterung in app/core/access.py."""
     if access_token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Nicht angemeldet")
 
@@ -22,6 +27,8 @@ def get_current_user(
     user = db.get(User, int(user_id))
     if user is None or user.deleted_at is not None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Benutzer nicht gefunden")
+
+    apply_rls_context(db, user.user_id, resolve_role(user))
 
     return user
 

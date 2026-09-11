@@ -24,7 +24,12 @@ services:
     env_file:
       - ./backend/.env.example
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/immobilien
+      # Laufzeitverbindung der App als eingeschränkter app_user (RLS greift
+      # nur für Nicht-Superuser, siehe Migration 0014_row_level_security).
+      DATABASE_URL: postgresql+psycopg://app_user:app_user_dev_password@db:5432/immobilien
+      # Für 'alembic upgrade head' (DDL/CREATE ROLE/GRANT) - bewusst
+      # weiterhin Superuser, siehe backend/alembic/env.py.
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/immobilien
     ports:
       - "8000:8000"
     volumes:

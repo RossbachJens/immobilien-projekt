@@ -42,10 +42,21 @@ class SettlementPosition(Base):
     umlagefähige von nicht umlagefähigen Kosten (vgl. Muster-Einzelabrechnung)
     - bewusst Eigenschaft der Position statt des Kontos, da dieselbe
     Kostenart je nach Vertrag/Satzung unterschiedlich eingestuft werden kann.
+
+    § 35a EStG (Migration 0012): tax_category kennzeichnet, ob die Position
+    eine haushaltsnahe Dienstleistung oder Handwerkerleistung enthält.
+    deductible_amount ist bewusst getrennt von actual_amount - nur der
+    Lohn-/Fahrt-/Maschinenkostenanteil ist bescheinigungsfähig, Material ist
+    bei BEIDEN Kategorien ausgeschlossen (siehe PROJECTPLAN.md).
     """
 
     __tablename__ = "settlement_positions"
-    __table_args__ = (CheckConstraint("actual_amount >= 0"),)
+    __table_args__ = (
+        CheckConstraint("actual_amount >= 0"),
+        CheckConstraint(
+            "tax_category IN ('keine', 'haushaltsnahe_dienstleistung', 'handwerkerleistung')"
+        ),
+    )
 
     position_id: Mapped[int] = mapped_column(primary_key=True)
     settlement_id: Mapped[int] = mapped_column(ForeignKey("settlement_periods.settlement_id"))
@@ -53,6 +64,8 @@ class SettlementPosition(Base):
     actual_amount: Mapped[float] = mapped_column(Numeric(12, 2))
     allocation_key_type: Mapped[str]
     is_apportionable: Mapped[bool] = mapped_column(default=False)
+    tax_category: Mapped[str] = mapped_column(String(30), default="keine")
+    deductible_amount: Mapped[float | None] = mapped_column(Numeric(12, 2))
 
 
 class SettlementPositionAccount(Base):
@@ -83,6 +96,28 @@ class UnitSettlementShare(Base):
     position_id: Mapped[int] = mapped_column(ForeignKey("settlement_positions.position_id"))
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.unit_id"))
     allocated_actual_amount: Mapped[float] = mapped_column(Numeric(12, 2))
+
+
+class UnitSettlementTaxShare(Base):
+    """
+    Verteilt AUSSCHLIESSLICH den bescheinigungsfähigen Lohnanteil
+    (SettlementPosition.deductible_amount) auf Einheiten - gleiche
+    Verteilungslogik wie UnitSettlementShare, aber andere Bemessungs-
+    grundlage. Bewusst keine Wiederverwendung von UnitSettlementShare, da
+    dort der volle (nicht bescheinigungsfähige) Ist-Betrag steht (siehe
+    PROJECTPLAN.md, Grundsatzentscheidung "§ 35a EStG").
+    """
+
+    __tablename__ = "unit_settlement_tax_shares"
+    __table_args__ = (
+        CheckConstraint("allocated_deductible_amount >= 0"),
+        UniqueConstraint("position_id", "unit_id"),
+    )
+
+    share_id: Mapped[int] = mapped_column(primary_key=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("settlement_positions.position_id"))
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.unit_id"))
+    allocated_deductible_amount: Mapped[float] = mapped_column(Numeric(12, 2))
 
 
 class UnitSettlementSummary(Base):

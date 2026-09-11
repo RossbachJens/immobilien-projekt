@@ -8,7 +8,10 @@ from app.db.base import Base
 import app.models  # noqa: F401  (registriert alle Tabellen an Base.metadata)
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Migrationen brauchen Superuser-Rechte (DDL, CREATE ROLE, GRANT - siehe
+# Migration 0014_row_level_security) - bewusst migration_database_url statt
+# database_url (Laufzeitverbindung der App als eingeschränkter app_user).
+config.set_main_option("sqlalchemy.url", settings.migration_database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

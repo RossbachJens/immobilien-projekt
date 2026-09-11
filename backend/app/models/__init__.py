@@ -27,6 +27,7 @@ from app.models.abrechnung import (  # noqa: F401
     SettlementPositionAccount,
     UnitSettlementShare,
     UnitSettlementSummary,
+    UnitSettlementTaxShare,
 )
 from app.models.bank_accounts import BankAccountPurpose, PropertyBankAccount  # noqa: F401
 
