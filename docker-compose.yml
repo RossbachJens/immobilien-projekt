@@ -18,6 +18,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # Isolierte Test-Datenbank (siehe backend/tests/conftest.py) - eigener
+  # Cluster statt einer zweiten Datenbank im 'db'-Container, damit
+  # Migration 0014 (CREATE ROLE app_user, GRANT, RLS-Policies) beim Testen
+  # niemals versehentlich die Dev-DB berührt (Rollen sind cluster-weit,
+  # nicht datenbankweit - ein DROP ROLE beim Downgrade würde sonst auch
+  # 'db' betreffen). Startet NICHT automatisch mit 'docker compose up'
+  # (siehe profiles), um den normalen Dev-Workflow nicht zu verlangsamen.
+  db_test:
+    image: postgres:16
+    restart: unless-stopped
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: immobilien_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_test_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build: ./backend
     restart: unless-stopped
@@ -30,6 +56,12 @@ services:
       # Für 'alembic upgrade head' (DDL/CREATE ROLE/GRANT) - bewusst
       # weiterhin Superuser, siehe backend/alembic/env.py.
       MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/immobilien
+      # Nur für Testläufe relevant (siehe backend/tests/conftest.py, das
+      # DATABASE_URL/MIGRATION_DATABASE_URL im Testprozess zwingend auf
+      # diese Werte umbiegt) - zeigt bewusst auf db_test, nie auf die
+      # Dev-DB oben.
+      TEST_DATABASE_URL: postgresql+psycopg://app_user:app_user_dev_password@db_test:5432/immobilien_test
+      TEST_MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db_test:5432/immobilien_test
     ports:
       - "8000:8000"
     volumes:
@@ -51,5 +83,35 @@ services:
     depends_on:
       - backend
 
+  # Regelmäßige pg_dump-Backups der ECHTEN Datenbank ('db', nicht db_test).
+  # Läuft als PGUSER=postgres (Superuser) - bewusst NICHT als app_user: RLS
+  # gilt auch für pg_dump-Verbindungen, ein Dump durch eine eingeschränkte
+  # Rolle würde daher nur die für sie sichtbaren Zeilen exportieren. Ein
+  # Backup muss immer den vollständigen Datenbestand sichern. Startet
+  # nicht automatisch mit 'docker compose up' (siehe profiles).
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    profiles: ["backup"]
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: immobilien
+      # Intervall zwischen automatischen Backups in Sekunden (Default: 1x
+      # täglich) sowie Anzahl der aufbewahrten Dumps (ältere werden dann
+      # gelöscht) - siehe scripts/backup-loop.sh.
+      BACKUP_INTERVAL_SECONDS: "86400"
+      BACKUP_RETENTION_COUNT: "14"
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   db_data:
+  db_test_data:
