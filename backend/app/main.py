@@ -2,9 +2,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.access_log import AccessLogMiddleware
 from app.core.config import settings
-# backend/app/main.py — Import ergänzen
-# backend/app/main.py — Import ergänzen
 from app.routers import (
     accounts, allocation_keys, auth, bank_accounts, budget_plans, documents, health,
     journal_entries, meetings, owners, payments, properties, reserve_fund, resolutions,
@@ -23,6 +22,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rechenschaftspflicht (Art. 30 DSGVO) - protokolliert Zugriffe auf
+# personenbezogene Stammdaten (owners/tenants/users). Bewusst NACH
+# CORSMiddleware registriert: Starlette baut den Middleware-Stack in
+# umgekehrter Registrierungsreihenfolge auf, wodurch AccessLogMiddleware
+# zur äußeren Schicht wird und die von CORSMiddleware bereits gesetzten
+# Header sieht - unproblematisch, da AccessLogMiddleware nur den
+# Response-Body liest/ersetzt, keine Header verändert.
+app.add_middleware(AccessLogMiddleware)
 
 
 app.include_router(health.router)
@@ -47,5 +55,10 @@ app.include_router(documents.router)
 
 
 # Noch offen:
-#   - access_log-Middleware (protokolliert Zugriffe auf personenbezogene Daten)
-#   - rollenbasierte Filterung + Postgres RLS-Policies (Defense-in-Depth)
+#   - Google-SSO-Login-Flow
+#   - Rate-Limiting, Logging ohne PII, Key-Rotation, produktiver E-Mail-Versand
+#   - access_log-Middleware: bisher nur owners/tenants/users abgedeckt -
+#     documents (inkl. Downloads) und generierte PDFs (Abrechnungen,
+#     Niederschriften, Einladungen) folgen in einem späteren Durchgang
+#   - rollenbasierte Filterung + Postgres RLS-Policies: erledigt
+#     (Migration 0014_row_level_security)
