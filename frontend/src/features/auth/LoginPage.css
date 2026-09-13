@@ -50,3 +50,18 @@
   text-align: center;
 }
 
+.login-page__google-button {
+  margin-top: var(--space-1);
+  padding: 0.6rem;
+  width: 100%;
+  background-color: var(--color-white);
+  color: var(--color-text);
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.login-page__google-button:hover {
+  background-color: var(--color-light);
+}
