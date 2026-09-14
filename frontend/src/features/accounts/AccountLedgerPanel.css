@@ -1,0 +1,88 @@
+/* frontend/src/features/accounts/AccountLedgerPanel.css */
+.account-ledger-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.account-ledger-panel__filters {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: var(--space-1) 0;
+}
+
+.account-ledger-panel__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.account-ledger-panel__filters select,
+.account-ledger-panel__filters input {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.account-ledger-panel__checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400 !important;
+}
+
+.account-ledger-panel__hint {
+  color: #777;
+  font-style: italic;
+}
+
+.account-ledger-panel__error {
+  color: var(--color-error);
+}
+
+.account-ledger-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.account-ledger-panel__table th,
+.account-ledger-panel__table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+}
+
+.account-ledger-panel__table th:nth-child(4),
+.account-ledger-panel__table th:nth-child(5),
+.account-ledger-panel__table th:nth-child(6),
+.account-ledger-panel__table td:nth-child(4),
+.account-ledger-panel__table td:nth-child(5),
+.account-ledger-panel__table td:nth-child(6) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-ledger-panel__description {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-ledger-panel__opening-row {
+  font-style: italic;
+  color: #555;
+  background-color: var(--color-light);
+}
+
+.account-ledger-panel__table tfoot td {
+  font-weight: 700;
+  border-top: 2px solid #ccc;
+  border-bottom: none;
+}

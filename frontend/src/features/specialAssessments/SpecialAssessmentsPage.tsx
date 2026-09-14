@@ -1,8 +1,8 @@
 // frontend/src/features/specialAssessments/SpecialAssessmentsPage.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Card } from "../../components/Card";
-import { useProperties } from "../properties/useProperties";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import { useResolutions } from "../resolutions/useResolutions";
 import { useUnits } from "../units/useUnits";
 import type { SpecialAssessmentPayload, SpecialAssessmentStatus } from "./api";
@@ -25,21 +25,25 @@ const NEXT_STATUS_LABEL: Record<SpecialAssessmentStatus, { next: SpecialAssessme
 };
 
 export function SpecialAssessmentsPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const { data: assessments, isLoading } = useSpecialAssessments(selectedPropertyId);
-  const { data: units } = useUnits(selectedPropertyId);
-  const { data: resolutions } = useResolutions(selectedPropertyId);
+  const { data: assessments, isLoading } = useSpecialAssessments(propertyId ?? undefined);
+  const { data: units } = useUnits(propertyId ?? undefined);
+  const { data: resolutions } = useResolutions(propertyId ?? undefined);
 
-  const createMutation = useCreateSpecialAssessment(selectedPropertyId ?? -1);
-  const updateStatusMutation = useUpdateSpecialAssessmentStatus(selectedPropertyId ?? -1);
-  const updateShareMutation = useUpdateSharePaymentStatus(selectedPropertyId ?? -1);
+  const createMutation = useCreateSpecialAssessment(propertyId ?? -1);
+  const updateStatusMutation = useUpdateSpecialAssessmentStatus(propertyId ?? -1);
+  const updateShareMutation = useUpdateSharePaymentStatus(propertyId ?? -1);
 
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    setCreating(false);
+    setFormError(null);
+    setExpandedId(null);
+  }, [propertyId]);
 
   function unitLabel(unitId: number): string {
     const unit = units?.find((u) => u.unit_id === unitId);
@@ -61,122 +65,122 @@ export function SpecialAssessmentsPage() {
     });
   }
 
+  if (propertiesLoading) {
+    return (
+      <div className="special-assessments-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="special-assessments-page">
+        <Card>
+          <h1>Sonderumlagen</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="special-assessments-page">
       <Card>
-        <h1>Sonderumlagen</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="special-assessments-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setExpandedId(null);
-              setCreating(false);
-            }}
-          >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <h1>Sonderumlagen – {property?.name}</h1>
       </Card>
 
-      {selectedPropertyId !== undefined && (
-        <Card>
-          <div className="special-assessments-page__header">
-            <h2>Sonderumlagen</h2>
-            {!creating && (
-              <button type="button" onClick={() => setCreating(true)}>
-                Neue Sonderumlage
-              </button>
-            )}
-          </div>
+      <Card>
+        <div className="special-assessments-page__header">
+          <h2>Sonderumlagen</h2>
+          {!creating && (
+            <button type="button" onClick={() => setCreating(true)}>
+              Neue Sonderumlage
+            </button>
+          )}
+        </div>
 
-          {isLoading && <p>Lädt…</p>}
-          {!isLoading && assessments?.length === 0 && <p>Noch keine Sonderumlagen erfasst.</p>}
+        {isLoading && <p>Lädt…</p>}
+        {!isLoading && assessments?.length === 0 && <p>Noch keine Sonderumlagen erfasst.</p>}
 
-          <ul className="special-assessments-page__list">
-            {assessments?.map((a) => (
-              <li key={a.assessment_id} className="special-assessments-page__entry">
-                <div className="special-assessments-page__entry-row">
-                  <div>
-                    <strong>{a.title}</strong> · {a.total_required_amount.toFixed(2)} € · fällig {a.due_date}{" "}
-                    <span className={`special-assessments-page__status special-assessments-page__status--${a.status}`}>
-                      {a.status}
-                    </span>
-                    {resolutionLabel(a.resolution_id) && (
-                      <div className="special-assessments-page__resolution">
-                        Beschluss: {resolutionLabel(a.resolution_id)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="special-assessments-page__entry-actions">
-                    <button type="button" onClick={() => setExpandedId(expandedId === a.assessment_id ? null : a.assessment_id)}>
-                      {expandedId === a.assessment_id ? "Details ausblenden" : "Details"}
-                    </button>
-                    {NEXT_STATUS_LABEL[a.status].map(({ next, label }) => (
-                      <button
-                        key={next}
-                        type="button"
-                        onClick={() => {
-                          if (next === "Storniert" && !window.confirm("Sonderumlage wirklich stornieren?")) return;
-                          updateStatusMutation.mutate({ assessmentId: a.assessment_id, status: next });
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+        <ul className="special-assessments-page__list">
+          {assessments?.map((a) => (
+            <li key={a.assessment_id} className="special-assessments-page__entry">
+              <div className="special-assessments-page__entry-row">
+                <div>
+                  <strong>{a.title}</strong> · {a.total_required_amount.toFixed(2)} € · fällig {a.due_date}{" "}
+                  <span className={`special-assessments-page__status special-assessments-page__status--${a.status}`}>
+                    {a.status}
+                  </span>
+                  {resolutionLabel(a.resolution_id) && (
+                    <div className="special-assessments-page__resolution">
+                      Beschluss: {resolutionLabel(a.resolution_id)}
+                    </div>
+                  )}
                 </div>
+                <div className="special-assessments-page__entry-actions">
+                  <button type="button" onClick={() => setExpandedId(expandedId === a.assessment_id ? null : a.assessment_id)}>
+                    {expandedId === a.assessment_id ? "Details ausblenden" : "Details"}
+                  </button>
+                  {NEXT_STATUS_LABEL[a.status].map(({ next, label }) => (
+                    <button
+                      key={next}
+                      type="button"
+                      onClick={() => {
+                        if (next === "Storniert" && !window.confirm("Sonderumlage wirklich stornieren?")) return;
+                        updateStatusMutation.mutate({ assessmentId: a.assessment_id, status: next });
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-                {expandedId === a.assessment_id && (
-                  <table className="special-assessments-page__shares-table">
-                    <thead>
-                      <tr>
-                        <th>Einheit</th>
-                        <th>Betrag</th>
-                        <th>Bezahlt</th>
+              {expandedId === a.assessment_id && (
+                <table className="special-assessments-page__shares-table">
+                  <thead>
+                    <tr>
+                      <th>Einheit</th>
+                      <th>Betrag</th>
+                      <th>Bezahlt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {a.unit_shares.map((share) => (
+                      <tr key={share.unit_assessment_id}>
+                        <td>{unitLabel(share.unit_id)}</td>
+                        <td>{share.allocated_assessment_amount.toFixed(2)} €</td>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={share.is_paid}
+                            onChange={(e) =>
+                              updateShareMutation.mutate({
+                                assessmentId: a.assessment_id,
+                                unitAssessmentId: share.unit_assessment_id,
+                                isPaid: e.target.checked,
+                              })
+                            }
+                          />
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {a.unit_shares.map((share) => (
-                        <tr key={share.unit_assessment_id}>
-                          <td>{unitLabel(share.unit_id)}</td>
-                          <td>{share.allocated_assessment_amount.toFixed(2)} €</td>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={share.is_paid}
-                              onChange={(e) =>
-                                updateShareMutation.mutate({
-                                  assessmentId: a.assessment_id,
-                                  unitAssessmentId: share.unit_assessment_id,
-                                  isPaid: e.target.checked,
-                                })
-                              }
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </li>
+          ))}
+        </ul>
+      </Card>
 
-      {creating && selectedPropertyId !== undefined && (
+      {creating && (
         <Card>
           <h2>Neue Sonderumlage anlegen</h2>
           <SpecialAssessmentForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             onSubmit={handleCreate}
             onCancel={() => setCreating(false)}
             isSubmitting={createMutation.isPending}

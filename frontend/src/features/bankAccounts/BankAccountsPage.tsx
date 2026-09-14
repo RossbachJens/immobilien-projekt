@@ -1,11 +1,11 @@
 // frontend/src/features/bankAccounts/BankAccountsPage.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Card } from "../../components/Card";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
-import { useProperties } from "../properties/useProperties";
 import type { BankAccountPayload, BankAccountPurpose } from "./api";
 import { BankAccountForm } from "./BankAccountForm";
 import { useBankAccounts, useCreateBankAccount, useUpdateBankAccount } from "./useBankAccounts";
@@ -22,24 +22,26 @@ function todayIso(): string {
 }
 
 export function BankAccountsPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const { data: bankAccounts, isLoading, isError, error } = useBankAccounts(selectedPropertyId);
-  const { data: accounts } = useAccounts({ property_id: selectedPropertyId });
+  const { data: bankAccounts, isLoading, isError, error } = useBankAccounts(propertyId ?? undefined);
+  const { data: accounts } = useAccounts({ property_id: propertyId ?? undefined });
 
-  const createMutation = useCreateBankAccount(selectedPropertyId ?? -1);
-  const updateMutation = useUpdateBankAccount(selectedPropertyId ?? -1);
+  const createMutation = useCreateBankAccount(propertyId ?? -1);
+  const updateMutation = useUpdateBankAccount(propertyId ?? -1);
 
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // bank_account_id, für das gerade ein Gültigkeitsende eingegeben wird -
-  // kein automatisches "heute", ein Bankwechsel steht oft schon vorher fest.
   const [endingId, setEndingId] = useState<number | null>(null);
   const [endDate, setEndDate] = useState(todayIso());
   const [endError, setEndError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCreating(false);
+    setFormError(null);
+    setEndingId(null);
+  }, [propertyId]);
 
   const isForbidden =
     isError &&
@@ -87,38 +89,40 @@ export function BankAccountsPage() {
   const current = bankAccounts?.filter((b) => b.valid_to === null) ?? [];
   const past = bankAccounts?.filter((b) => b.valid_to !== null) ?? [];
 
+  if (propertiesLoading) {
+    return (
+      <div className="bank-accounts-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="bank-accounts-page">
+        <Card>
+          <h1>Bankkonten</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="bank-accounts-page">
       <Card>
-        <h1>Bankkonten</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="bank-accounts-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setCreating(false);
-              setEndingId(null);
-            }}
-          >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <h1>Bankkonten – {property?.name}</h1>
       </Card>
 
-      {selectedPropertyId !== undefined && isForbidden && (
+      {isForbidden && (
         <Card>
           <p>Kein Zugriff auf die Bankkonten mit diesem Konto.</p>
         </Card>
       )}
 
-      {selectedPropertyId !== undefined && !isForbidden && (
+      {!isForbidden && (
         <Card>
           <div className="bank-accounts-page__header">
             <h2>Aktuelle Bankkonten</h2>
@@ -194,11 +198,11 @@ export function BankAccountsPage() {
         </Card>
       )}
 
-      {creating && selectedPropertyId !== undefined && (
+      {creating && (
         <Card>
           <h2>Neues Bankkonto anlegen</h2>
           <BankAccountForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             submitLabel="Anlegen"
             onSubmit={handleCreate}
             onCancel={() => setCreating(false)}

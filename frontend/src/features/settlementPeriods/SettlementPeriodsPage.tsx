@@ -1,10 +1,10 @@
 // frontend/src/features/settlementPeriods/SettlementPeriodsPage.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Card } from "../../components/Card";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
-import { useProperties } from "../properties/useProperties";
 import { ReserveFundPanel } from "../reserveFund/ReserveFundPanel";
 import { useResolutions } from "../resolutions/useResolutions";
 import { useUnits } from "../units/useUnits";
@@ -35,23 +35,29 @@ const NEXT_STATUS_LABEL: Record<SettlementStatus, { next: SettlementStatus; labe
 };
 
 export function SettlementPeriodsPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const { data: periods, isLoading: periodsLoading } = useSettlementPeriods(selectedPropertyId);
-  const { data: accounts } = useAccounts({ property_id: selectedPropertyId });
-  const { data: units } = useUnits(selectedPropertyId);
-  const { data: resolutions } = useResolutions(selectedPropertyId);
+  const { data: periods, isLoading: periodsLoading } = useSettlementPeriods(propertyId ?? undefined);
+  const { data: accounts } = useAccounts({ property_id: propertyId ?? undefined });
+  const { data: units } = useUnits(propertyId ?? undefined);
+  const { data: resolutions } = useResolutions(propertyId ?? undefined);
 
-  const createMutation = useCreateSettlementPeriod(selectedPropertyId ?? -1);
-  const updateMutation = useUpdateSettlementPeriod(selectedPropertyId ?? -1);
+  const createMutation = useCreateSettlementPeriod(propertyId ?? -1);
+  const updateMutation = useUpdateSettlementPeriod(propertyId ?? -1);
 
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [approveResolutionId, setApproveResolutionId] = useState<number | "">("");
+
+  useEffect(() => {
+    setCreating(false);
+    setFormError(null);
+    setExpandedId(null);
+    setApprovingId(null);
+    setApproveResolutionId("");
+  }, [propertyId]);
 
   function handleCreate(payload: SettlementPeriodPayload) {
     setFormError(null);
@@ -90,142 +96,141 @@ export function SettlementPeriodsPage() {
     return unit ? unit.unit_number : `#${unitId}`;
   }
 
+  if (propertiesLoading) {
+    return (
+      <div className="settlement-periods-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="settlement-periods-page">
+        <Card>
+          <h1>Nebenkostenabrechnung</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="settlement-periods-page">
       <Card>
-        <h1>Nebenkostenabrechnung</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="settlement-periods-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setExpandedId(null);
-              setCreating(false);
-              setApprovingId(null);
-            }}
-          >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <h1>Nebenkostenabrechnung – {property?.name}</h1>
       </Card>
 
-      {selectedPropertyId !== undefined && (
-        <Card>
-          <div className="settlement-periods-page__header">
-            <h2>Abrechnungen</h2>
-            {!creating && (
-              <button type="button" onClick={() => setCreating(true)}>
-                Neue Abrechnung
-              </button>
-            )}
-          </div>
+      <Card>
+        <div className="settlement-periods-page__header">
+          <h2>Abrechnungen</h2>
+          {!creating && (
+            <button type="button" onClick={() => setCreating(true)}>
+              Neue Abrechnung
+            </button>
+          )}
+        </div>
 
-          {periodsLoading && <p>Lädt…</p>}
-          {!periodsLoading && periods?.length === 0 && <p>Noch keine Abrechnungen erfasst.</p>}
+        {periodsLoading && <p>Lädt…</p>}
+        {!periodsLoading && periods?.length === 0 && <p>Noch keine Abrechnungen erfasst.</p>}
 
-          <ul className="settlement-periods-page__list">
-            {periods?.map((period) => (
-              <li key={period.settlement_id} className="settlement-periods-page__period">
-                <div className="settlement-periods-page__period-row">
-                  <div>
-                    <strong>{period.fiscal_year}</strong> · {period.title} · {period.period_start} –{" "}
-                    {period.period_end}{" "}
-                    <span className={`settlement-periods-page__status settlement-periods-page__status--${period.status}`}>
-                      {period.status}
-                    </span>
-                    {resolutionLabel(period.resolution_id) && (
-                      <div className="settlement-periods-page__resolution">
-                        Beschluss: {resolutionLabel(period.resolution_id)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="settlement-periods-page__period-actions">
+        <ul className="settlement-periods-page__list">
+          {periods?.map((period) => (
+            <li key={period.settlement_id} className="settlement-periods-page__period">
+              <div className="settlement-periods-page__period-row">
+                <div>
+                  <strong>{period.fiscal_year}</strong> · {period.title} · {period.period_start} –{" "}
+                  {period.period_end}{" "}
+                  <span className={`settlement-periods-page__status settlement-periods-page__status--${period.status}`}>
+                    {period.status}
+                  </span>
+                  {resolutionLabel(period.resolution_id) && (
+                    <div className="settlement-periods-page__resolution">
+                      Beschluss: {resolutionLabel(period.resolution_id)}
+                    </div>
+                  )}
+                </div>
+                <div className="settlement-periods-page__period-actions">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(expandedId === period.settlement_id ? null : period.settlement_id)}
+                  >
+                    {expandedId === period.settlement_id ? "Details ausblenden" : "Details"}
+                  </button>
+                  {NEXT_STATUS_LABEL[period.status].map(({ next, label }) => (
+                    <button
+                      key={next}
+                      type="button"
+                      onClick={() => handleStatusChange(period.settlement_id, next, period.resolution_id != null)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {approvingId === period.settlement_id && (
+                <div className="settlement-periods-page__approve">
+                  <label>
+                    Beschluss zuordnen, um zu beschließen
+                    <select
+                      value={approveResolutionId}
+                      onChange={(e) => setApproveResolutionId(e.target.value ? Number(e.target.value) : "")}
+                    >
+                      <option value="">– bitte wählen –</option>
+                      {resolutions?.map((r) => (
+                        <option key={r.resolution_id} value={r.resolution_id}>
+                          Lfd. Nr. {r.lfd_nr} – {r.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="settlement-periods-page__approve-actions">
                     <button
                       type="button"
-                      onClick={() => setExpandedId(expandedId === period.settlement_id ? null : period.settlement_id)}
+                      disabled={approveResolutionId === "" || updateMutation.isPending}
+                      onClick={() => confirmApproval(period.settlement_id)}
                     >
-                      {expandedId === period.settlement_id ? "Details ausblenden" : "Details"}
+                      Beschließen
                     </button>
-                    {NEXT_STATUS_LABEL[period.status].map(({ next, label }) => (
-                      <button
-                        key={next}
-                        type="button"
-                        onClick={() => handleStatusChange(period.settlement_id, next, period.resolution_id != null)}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    <button type="button" onClick={() => setApprovingId(null)}>
+                      Abbrechen
+                    </button>
                   </div>
+                  {(!resolutions || resolutions.length === 0) && (
+                    <p className="settlement-periods-page__approve-hint">
+                      Noch keine Beschlüsse für diese Liegenschaft erfasst - zuerst in der Beschluss-Sammlung
+                      anlegen.
+                    </p>
+                  )}
                 </div>
+              )}
 
-                {approvingId === period.settlement_id && (
-                  <div className="settlement-periods-page__approve">
-                    <label>
-                      Beschluss zuordnen, um zu beschließen
-                      <select
-                        value={approveResolutionId}
-                        onChange={(e) => setApproveResolutionId(e.target.value ? Number(e.target.value) : "")}
-                      >
-                        <option value="">– bitte wählen –</option>
-                        {resolutions?.map((r) => (
-                          <option key={r.resolution_id} value={r.resolution_id}>
-                            Lfd. Nr. {r.lfd_nr} – {r.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="settlement-periods-page__approve-actions">
-                      <button
-                        type="button"
-                        disabled={approveResolutionId === "" || updateMutation.isPending}
-                        onClick={() => confirmApproval(period.settlement_id)}
-                      >
-                        Beschließen
-                      </button>
-                      <button type="button" onClick={() => setApprovingId(null)}>
-                        Abbrechen
-                      </button>
-                    </div>
-                    {(!resolutions || resolutions.length === 0) && (
-                      <p className="settlement-periods-page__approve-hint">
-                        Noch keine Beschlüsse für diese Liegenschaft erfasst - zuerst in der Beschluss-Sammlung
-                        anlegen.
-                      </p>
-                    )}
-                  </div>
-                )}
+              {expandedId === period.settlement_id && (
+                <SettlementPeriodDetails
+                  settlementId={period.settlement_id}
+                  propertyId={propertyId}
+                  fiscalYear={period.fiscal_year}
+                  periodStatus={period.status}
+                  accountLabelFor={(id) => {
+                    const a = accounts?.find((acc) => acc.account_id === id);
+                    return a ? accountLabel(a) : `Konto #${id}`;
+                  }}
+                  unitLabelFor={unitLabel}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      </Card>
 
-                {expandedId === period.settlement_id && (
-                  <SettlementPeriodDetails
-                    settlementId={period.settlement_id}
-                    propertyId={selectedPropertyId}
-                    fiscalYear={period.fiscal_year}
-                    periodStatus={period.status}
-                    accountLabelFor={(id) => {
-                      const a = accounts?.find((acc) => acc.account_id === id);
-                      return a ? accountLabel(a) : `Konto #${id}`;
-                    }}
-                    unitLabelFor={unitLabel}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {creating && selectedPropertyId !== undefined && (
+      {creating && (
         <Card>
           <h2>Neue Abrechnung anlegen</h2>
           <SettlementPeriodForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             onSubmit={handleCreate}
             onCancel={() => setCreating(false)}
             isSubmitting={createMutation.isPending}
@@ -262,8 +267,6 @@ function SettlementPeriodDetails({
   const recalculateMutation = useRecalculateSettlement(settlementId);
   const exportMutation = useExportUnitSettlement();
 
-  // Positionen sind bewusst nur "bis zum Beschluss" (Abrechnungs-Status
-  // "Entwurf") änderbar - danach Teil der beschlossenen Jahresabrechnung.
   const isDraft = periodStatus === "Entwurf";
 
   const [showCreateForm, setShowCreateForm] = useState(false);

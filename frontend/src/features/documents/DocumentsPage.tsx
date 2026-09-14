@@ -1,8 +1,8 @@
 // frontend/src/features/documents/DocumentsPage.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Card } from "../../components/Card";
-import { useProperties } from "../properties/useProperties";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import type { DocumentUploadPayload } from "./api";
 import { documentDownloadUrl } from "./api";
 import { DocumentUploadForm } from "./DocumentUploadForm";
@@ -16,17 +16,20 @@ function formatFileSize(bytes: number): string {
 }
 
 export function DocumentsPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const listParams = selectedPropertyId !== undefined ? { property_id: selectedPropertyId } : undefined;
+  const listParams = propertyId != null ? { property_id: propertyId } : undefined;
   const { data: documents, isLoading } = useDocuments(listParams);
   const uploadMutation = useUploadDocument(listParams);
   const deleteMutation = useDeleteDocument(listParams);
 
   const [uploading, setUploading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUploading(false);
+    setFormError(null);
+  }, [propertyId]);
 
   function handleUpload(payload: DocumentUploadPayload) {
     setFormError(null);
@@ -41,83 +44,84 @@ export function DocumentsPage() {
     deleteMutation.mutate(documentId);
   }
 
+  if (propertiesLoading) {
+    return (
+      <div className="documents-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="documents-page">
+        <Card>
+          <h1>Dokumente</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="documents-page">
       <Card>
-        <h1>Dokumente</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="documents-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setUploading(false);
-            }}
-          >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <h1>Dokumente – {property?.name}</h1>
       </Card>
 
-      {selectedPropertyId !== undefined && (
-        <Card>
-          <div className="documents-page__header">
-            <h2>Abgelegte Dokumente</h2>
-            {!uploading && (
-              <button type="button" onClick={() => setUploading(true)}>
-                Dokument hochladen
-              </button>
-            )}
-          </div>
+      <Card>
+        <div className="documents-page__header">
+          <h2>Abgelegte Dokumente</h2>
+          {!uploading && (
+            <button type="button" onClick={() => setUploading(true)}>
+              Dokument hochladen
+            </button>
+          )}
+        </div>
 
-          {isLoading && <p>Lädt…</p>}
-          {!isLoading && documents?.length === 0 && <p>Noch keine Dokumente abgelegt.</p>}
+        {isLoading && <p>Lädt…</p>}
+        {!isLoading && documents?.length === 0 && <p>Noch keine Dokumente abgelegt.</p>}
 
-          <table className="documents-page__table">
-            <thead>
-              <tr>
-                <th>Titel</th>
-                <th>Kategorie</th>
-                <th>Sichtbarkeit</th>
-                <th>Größe</th>
-                <th>Hochgeladen am</th>
-                <th />
+        <table className="documents-page__table">
+          <thead>
+            <tr>
+              <th>Titel</th>
+              <th>Kategorie</th>
+              <th>Sichtbarkeit</th>
+              <th>Größe</th>
+              <th>Hochgeladen am</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {documents?.map((doc) => (
+              <tr key={doc.document_id}>
+                <td>{doc.title}</td>
+                <td>{doc.category}</td>
+                <td>{doc.visibility}</td>
+                <td>{formatFileSize(doc.file_size_bytes)}</td>
+                <td>{new Date(doc.created_at).toLocaleDateString("de-DE")}</td>
+                <td className="documents-page__actions">
+                  <a href={documentDownloadUrl(doc.document_id)} target="_blank" rel="noreferrer">
+                    Öffnen
+                  </a>
+                  <button type="button" onClick={() => handleDelete(doc.document_id)}>
+                    Löschen
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {documents?.map((doc) => (
-                <tr key={doc.document_id}>
-                  <td>{doc.title}</td>
-                  <td>{doc.category}</td>
-                  <td>{doc.visibility}</td>
-                  <td>{formatFileSize(doc.file_size_bytes)}</td>
-                  <td>{new Date(doc.created_at).toLocaleDateString("de-DE")}</td>
-                  <td className="documents-page__actions">
-                    <a href={documentDownloadUrl(doc.document_id)} target="_blank" rel="noreferrer">
-                      Öffnen
-                    </a>
-                    <button type="button" onClick={() => handleDelete(doc.document_id)}>
-                      Löschen
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </Card>
 
-      {uploading && selectedPropertyId !== undefined && (
+      {uploading && (
         <Card>
           <h2>Neues Dokument hochladen</h2>
           <DocumentUploadForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             onSubmit={handleUpload}
             onCancel={() => setUploading(false)}
             isSubmitting={uploadMutation.isPending}

@@ -1,9 +1,9 @@
 // frontend/src/features/meetings/MeetingsPage.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Card } from "../../components/Card";
-import { useProperties } from "../properties/useProperties";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import { AgendaItemsPanel } from "./AgendaItemsPanel";
 import { downloadInvitation, downloadMinutes } from "./api";
 import type { Meeting, MeetingPayload, MeetingStatus } from "./api";
@@ -21,20 +21,17 @@ const STATUS_LABELS: Record<MeetingStatus, string> = {
 type QuorumDraft = "" | "true" | "false";
 
 export function MeetingsPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const { data: meetings, isLoading, isError, error } = useMeetings(selectedPropertyId);
-  const createMutation = useCreateMeeting(selectedPropertyId ?? -1);
-  const updateMutation = useUpdateMeeting(selectedPropertyId ?? -1);
+  const { data: meetings, isLoading, isError, error } = useMeetings(propertyId ?? undefined);
+  const createMutation = useCreateMeeting(propertyId ?? -1);
+  const updateMutation = useUpdateMeeting(propertyId ?? -1);
 
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  // Niederschrift-Formular-Drafts (Kopfdaten + freier Text)
   const [minutesDraft, setMinutesDraft] = useState("");
   const [chairpersonDraft, setChairpersonDraft] = useState("");
   const [minuteTakerDraft, setMinuteTakerDraft] = useState("");
@@ -43,6 +40,13 @@ export function MeetingsPage() {
   const [quorumMetDraft, setQuorumMetDraft] = useState<QuorumDraft>("");
   const [votingKeyDraft, setVotingKeyDraft] = useState("");
   const [minutesError, setMinutesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCreating(false);
+    setExpandedId(null);
+    setFormError(null);
+    setDownloadError(null);
+  }, [propertyId]);
 
   const isForbidden =
     isError &&
@@ -113,38 +117,40 @@ export function MeetingsPage() {
     }
   }
 
+  if (propertiesLoading) {
+    return (
+      <div className="meetings-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="meetings-page">
+        <Card>
+          <h1>Eigentümerversammlungen</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="meetings-page">
       <Card>
-        <h1>Eigentümerversammlungen</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="meetings-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setCreating(false);
-              setExpandedId(null);
-            }}
-          >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <h1>Eigentümerversammlungen – {property?.name}</h1>
       </Card>
 
-      {selectedPropertyId !== undefined && isForbidden && (
+      {isForbidden && (
         <Card>
           <p>Kein Zugriff auf Versammlungen mit diesem Konto.</p>
         </Card>
       )}
 
-      {selectedPropertyId !== undefined && !isForbidden && (
+      {!isForbidden && (
         <Card>
           <div className="meetings-page__header">
             <h2>Versammlungen</h2>
@@ -270,11 +276,11 @@ export function MeetingsPage() {
         </Card>
       )}
 
-      {creating && selectedPropertyId !== undefined && (
+      {creating && (
         <Card>
           <h2>Neue Versammlung anlegen</h2>
           <MeetingForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             onSubmit={handleCreate}
             onCancel={() => setCreating(false)}
             isSubmitting={createMutation.isPending}

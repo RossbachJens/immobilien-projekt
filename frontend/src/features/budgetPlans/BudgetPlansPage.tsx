@@ -1,10 +1,10 @@
-// frontend/src/features/budgetPlans/BudgetPlansPage.tsx — vollständig ersetzen
-import { useState } from "react";
+// frontend/src/features/budgetPlans/BudgetPlansPage.tsx
+import { useEffect, useState } from "react";
 
 import { Card } from "../../components/Card";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
-import { useProperties } from "../properties/useProperties";
 import { useResolutions } from "../resolutions/useResolutions";
 import { useUnits } from "../units/useUnits";
 import type { BudgetPlanPayload, BudgetPlanStatus, BudgetPositionPayload } from "./api";
@@ -29,24 +29,29 @@ const NEXT_STATUS_LABEL: Record<BudgetPlanStatus, { next: BudgetPlanStatus; labe
 };
 
 export function BudgetPlansPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const { data: plans, isLoading: plansLoading } = useBudgetPlans(selectedPropertyId);
-  const { data: accounts } = useAccounts({ property_id: selectedPropertyId });
-  const { data: units } = useUnits(selectedPropertyId);
-  const { data: resolutions } = useResolutions(selectedPropertyId);
+  const { data: plans, isLoading: plansLoading } = useBudgetPlans(propertyId ?? undefined);
+  const { data: accounts } = useAccounts({ property_id: propertyId ?? undefined });
+  const { data: units } = useUnits(propertyId ?? undefined);
+  const { data: resolutions } = useResolutions(propertyId ?? undefined);
 
-  const createPlanMutation = useCreateBudgetPlan(selectedPropertyId ?? -1);
-  const updatePlanMutation = useUpdateBudgetPlan(selectedPropertyId ?? -1);
+  const createPlanMutation = useCreateBudgetPlan(propertyId ?? -1);
+  const updatePlanMutation = useUpdateBudgetPlan(propertyId ?? -1);
 
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [planFormError, setPlanFormError] = useState<string | null>(null);
   const [expandedPlanId, setExpandedPlanId] = useState<number | null>(null);
-  // budget_id, für das gerade ein Beschluss ausgewählt wird, um es zu beschließen
   const [approvingPlanId, setApprovingPlanId] = useState<number | null>(null);
   const [approveResolutionId, setApproveResolutionId] = useState<number | "">("");
+
+  useEffect(() => {
+    setCreatingPlan(false);
+    setPlanFormError(null);
+    setExpandedPlanId(null);
+    setApprovingPlanId(null);
+    setApproveResolutionId("");
+  }, [propertyId]);
 
   function handleCreatePlan(payload: BudgetPlanPayload) {
     setPlanFormError(null);
@@ -86,140 +91,139 @@ export function BudgetPlansPage() {
     return unit ? unit.unit_number : `#${unitId}`;
   }
 
+  if (propertiesLoading) {
+    return (
+      <div className="budget-plans-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="budget-plans-page">
+        <Card>
+          <h1>Wirtschaftspläne</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="budget-plans-page">
       <Card>
-        <h1>Wirtschaftspläne</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="budget-plans-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setExpandedPlanId(null);
-              setCreatingPlan(false);
-              setApprovingPlanId(null);
-            }}
-          >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <h1>Wirtschaftspläne – {property?.name}</h1>
       </Card>
 
-      {selectedPropertyId !== undefined && (
-        <Card>
-          <div className="budget-plans-page__header">
-            <h2>Pläne</h2>
-            {!creatingPlan && (
-              <button type="button" onClick={() => setCreatingPlan(true)}>
-                Neuer Wirtschaftsplan
-              </button>
-            )}
-          </div>
+      <Card>
+        <div className="budget-plans-page__header">
+          <h2>Pläne</h2>
+          {!creatingPlan && (
+            <button type="button" onClick={() => setCreatingPlan(true)}>
+              Neuer Wirtschaftsplan
+            </button>
+          )}
+        </div>
 
-          {plansLoading && <p>Lädt…</p>}
-          {!plansLoading && plans?.length === 0 && <p>Noch keine Wirtschaftspläne erfasst.</p>}
+        {plansLoading && <p>Lädt…</p>}
+        {!plansLoading && plans?.length === 0 && <p>Noch keine Wirtschaftspläne erfasst.</p>}
 
-          <ul className="budget-plans-page__list">
-            {plans?.map((plan) => (
-              <li key={plan.budget_id} className="budget-plans-page__plan">
-                <div className="budget-plans-page__plan-row">
-                  <div>
-                    <strong>{plan.fiscal_year}</strong> · {plan.title}{" "}
-                    <span className={`budget-plans-page__status budget-plans-page__status--${plan.status}`}>
-                      {plan.status}
-                    </span>
-                    {resolutionLabel(plan.resolution_id) && (
-                      <div className="budget-plans-page__resolution">
-                        Beschluss: {resolutionLabel(plan.resolution_id)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="budget-plans-page__plan-actions">
+        <ul className="budget-plans-page__list">
+          {plans?.map((plan) => (
+            <li key={plan.budget_id} className="budget-plans-page__plan">
+              <div className="budget-plans-page__plan-row">
+                <div>
+                  <strong>{plan.fiscal_year}</strong> · {plan.title}{" "}
+                  <span className={`budget-plans-page__status budget-plans-page__status--${plan.status}`}>
+                    {plan.status}
+                  </span>
+                  {resolutionLabel(plan.resolution_id) && (
+                    <div className="budget-plans-page__resolution">
+                      Beschluss: {resolutionLabel(plan.resolution_id)}
+                    </div>
+                  )}
+                </div>
+                <div className="budget-plans-page__plan-actions">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedPlanId(expandedPlanId === plan.budget_id ? null : plan.budget_id)}
+                  >
+                    {expandedPlanId === plan.budget_id ? "Positionen ausblenden" : "Positionen"}
+                  </button>
+                  {NEXT_STATUS_LABEL[plan.status].map(({ next, label }) => (
+                    <button
+                      key={next}
+                      type="button"
+                      onClick={() => handleStatusChange(plan.budget_id, plan.status, next, plan.resolution_id != null)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {approvingPlanId === plan.budget_id && (
+                <div className="budget-plans-page__approve">
+                  <label>
+                    Beschluss zuordnen, um zu beschließen
+                    <select
+                      value={approveResolutionId}
+                      onChange={(e) => setApproveResolutionId(e.target.value ? Number(e.target.value) : "")}
+                    >
+                      <option value="">– bitte wählen –</option>
+                      {resolutions?.map((r) => (
+                        <option key={r.resolution_id} value={r.resolution_id}>
+                          Lfd. Nr. {r.lfd_nr} – {r.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="budget-plans-page__approve-actions">
                     <button
                       type="button"
-                      onClick={() => setExpandedPlanId(expandedPlanId === plan.budget_id ? null : plan.budget_id)}
+                      disabled={approveResolutionId === "" || updatePlanMutation.isPending}
+                      onClick={() => confirmApproval(plan.budget_id)}
                     >
-                      {expandedPlanId === plan.budget_id ? "Positionen ausblenden" : "Positionen"}
+                      Beschließen
                     </button>
-                    {NEXT_STATUS_LABEL[plan.status].map(({ next, label }) => (
-                      <button
-                        key={next}
-                        type="button"
-                        onClick={() => handleStatusChange(plan.budget_id, plan.status, next, plan.resolution_id != null)}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    <button type="button" onClick={() => setApprovingPlanId(null)}>
+                      Abbrechen
+                    </button>
                   </div>
+                  {(!resolutions || resolutions.length === 0) && (
+                    <p className="budget-plans-page__approve-hint">
+                      Noch keine Beschlüsse für diese Liegenschaft erfasst - zuerst in der
+                      Beschluss-Sammlung anlegen.
+                    </p>
+                  )}
                 </div>
+              )}
 
-                {approvingPlanId === plan.budget_id && (
-                  <div className="budget-plans-page__approve">
-                    <label>
-                      Beschluss zuordnen, um zu beschließen
-                      <select
-                        value={approveResolutionId}
-                        onChange={(e) => setApproveResolutionId(e.target.value ? Number(e.target.value) : "")}
-                      >
-                        <option value="">– bitte wählen –</option>
-                        {resolutions?.map((r) => (
-                          <option key={r.resolution_id} value={r.resolution_id}>
-                            Lfd. Nr. {r.lfd_nr} – {r.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="budget-plans-page__approve-actions">
-                      <button
-                        type="button"
-                        disabled={approveResolutionId === "" || updatePlanMutation.isPending}
-                        onClick={() => confirmApproval(plan.budget_id)}
-                      >
-                        Beschließen
-                      </button>
-                      <button type="button" onClick={() => setApprovingPlanId(null)}>
-                        Abbrechen
-                      </button>
-                    </div>
-                    {(!resolutions || resolutions.length === 0) && (
-                      <p className="budget-plans-page__approve-hint">
-                        Noch keine Beschlüsse für diese Liegenschaft erfasst - zuerst in der
-                        Beschluss-Sammlung anlegen.
-                      </p>
-                    )}
-                  </div>
-                )}
+              {expandedPlanId === plan.budget_id && (
+                <BudgetPlanPositions
+                  budgetId={plan.budget_id}
+                  propertyId={propertyId}
+                  planStatus={plan.status}
+                  accountLabelFor={(id) => {
+                    const a = accounts?.find((acc) => acc.account_id === id);
+                    return a ? accountLabel(a) : `Konto #${id}`;
+                  }}
+                  unitLabelFor={unitLabel}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      </Card>
 
-                {expandedPlanId === plan.budget_id && (
-                  <BudgetPlanPositions
-                    budgetId={plan.budget_id}
-                    propertyId={selectedPropertyId}
-                    planStatus={plan.status}
-                    accountLabelFor={(id) => {
-                      const a = accounts?.find((acc) => acc.account_id === id);
-                      return a ? accountLabel(a) : `Konto #${id}`;
-                    }}
-                    unitLabelFor={unitLabel}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {creatingPlan && selectedPropertyId !== undefined && (
+      {creatingPlan && (
         <Card>
           <h2>Neuen Wirtschaftsplan anlegen</h2>
           <BudgetPlanForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             onSubmit={handleCreatePlan}
             onCancel={() => setCreatingPlan(false)}
             isSubmitting={createPlanMutation.isPending}

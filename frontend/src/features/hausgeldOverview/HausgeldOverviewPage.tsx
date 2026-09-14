@@ -1,9 +1,9 @@
 // frontend/src/features/hausgeldOverview/HausgeldOverviewPage.tsx
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { Card } from "../../components/Card";
+import { useCurrentProperty } from "../../context/PropertyContext";
 import { useOwners } from "../owners/useOwners";
-import { useProperties } from "../properties/useProperties";
 import { useHausgeldOverview, useHausgeldPayments } from "./useHausgeldOverview";
 import "./HausgeldOverviewPage.css";
 
@@ -12,17 +12,19 @@ function currentYear(): number {
 }
 
 export function HausgeldOverviewPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
   const { data: owners } = useOwners();
-  const [propertyId, setPropertyId] = useState<number | "">("");
   const [fiscalYear, setFiscalYear] = useState(String(currentYear()));
   const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
 
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
   const selectedFiscalYear = Number(fiscalYear) || undefined;
 
+  useEffect(() => {
+    setExpandedUnitId(null);
+  }, [propertyId]);
+
   const { data: overview, isLoading, isError, error } = useHausgeldOverview(
-    selectedPropertyId,
+    propertyId ?? undefined,
     selectedFiscalYear,
   );
 
@@ -44,33 +46,36 @@ export function HausgeldOverviewPage() {
   const totalPaid = overview?.reduce((sum, u) => sum + u.paid_amount, 0) ?? 0;
   const totalBalance = overview?.reduce((sum, u) => sum + u.balance, 0) ?? 0;
 
+  if (propertiesLoading) {
+    return (
+      <div className="hausgeld-overview-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="hausgeld-overview-page">
+        <Card>
+          <h1>Hausgeldübersicht</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="hausgeld-overview-page">
       <Card>
-        <h1>Hausgeldübersicht</h1>
+        <h1>Hausgeldübersicht – {property?.name}</h1>
         <p className="hausgeld-overview-page__hint">
           Soll (aus dem beschlossenen Wirtschaftsplan) vs. Ist (Zahlungseingänge) je Einheit, kumuliert bis
           zum laufenden Monat des gewählten Jahres.
         </p>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
         <div className="hausgeld-overview-page__filters">
-          <label>
-            Liegenschaft
-            <select
-              value={propertyId}
-              onChange={(e) => {
-                setPropertyId(e.target.value ? Number(e.target.value) : "");
-                setExpandedUnitId(null);
-              }}
-            >
-              <option value="">– bitte wählen –</option>
-              {properties?.map((p) => (
-                <option key={p.property_id} value={p.property_id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <label>
             Jahr
             <input
@@ -85,13 +90,13 @@ export function HausgeldOverviewPage() {
         </div>
       </Card>
 
-      {selectedPropertyId !== undefined && isForbidden && (
+      {isForbidden && (
         <Card>
           <p>Kein Zugriff auf die Hausgeldübersicht mit diesem Konto.</p>
         </Card>
       )}
 
-      {selectedPropertyId !== undefined && !isForbidden && (
+      {!isForbidden && (
         <Card>
           {isLoading && <p>Lädt…</p>}
           {!isLoading && overview?.length === 0 && <p>Keine Einheiten in dieser Liegenschaft.</p>}
@@ -151,7 +156,7 @@ export function HausgeldOverviewPage() {
                       <tr>
                         <td colSpan={7}>
                           <UnitPaymentsList
-                            propertyId={selectedPropertyId}
+                            propertyId={propertyId}
                             unitId={u.unit_id}
                             fiscalYear={selectedFiscalYear as number}
                           />

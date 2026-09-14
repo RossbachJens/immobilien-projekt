@@ -1,9 +1,29 @@
+/* frontend/src/layouts/Sidebar.css */
 .sidebar {
   width: 220px;
   flex-shrink: 0;
   background-color: var(--color-white);
   border-right: 1px solid #eee;
   padding: var(--space-2) 0;
+}
+
+.sidebar__property-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0 var(--space-2) var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid #eee;
+}
+
+.sidebar__property-select select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 400;
 }
 
 .sidebar__nav {
@@ -29,16 +49,17 @@
   color: var(--color-primary);
 }
 
-/* Unterhalb des Tablet-Breakpoints (siehe style.css) wird aus der linken
-   Spalte eine horizontal scrollbare Leiste oberhalb des Inhalts - eine
-   Off-Canvas-/Hamburger-Lösung wäre hier mehr Aufwand, als der aktuelle
-   Funktionsumfang rechtfertigt. */
 @media (max-width: 768px) {
   .sidebar {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid #eee;
     padding: var(--space-1) 0;
+  }
+
+  .sidebar__property-select {
+    padding: 0 var(--space-1) var(--space-1);
+    border-bottom: none;
   }
 
   .sidebar__nav {

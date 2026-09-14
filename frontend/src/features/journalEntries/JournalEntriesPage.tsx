@@ -2,32 +2,34 @@
 import { useState } from "react";
 
 import { Card } from "../../components/Card";
+import { useCurrentProperty } from "../../context/PropertyContext";
+import { AccountLedgerPanel } from "../accounts/AccountLedgerPanel";
 import { accountLabel } from "../accounts/format";
 import { PropertyAccountsManager } from "../accounts/PropertyAccountsManager";
 import { useAccounts } from "../accounts/useAccounts";
-import { PaymentForm } from "../payments/PaymentForm";
 import type { PaymentPayload } from "../payments/api";
+import { PaymentForm } from "../payments/PaymentForm";
 import { useCreatePayment } from "../payments/usePayments";
-import { useProperties } from "../properties/useProperties";
 import { useUnits } from "../units/useUnits";
 import type { JournalEntryPayload } from "./api";
 import { JournalEntryForm } from "./JournalEntryForm";
 import { useCreateJournalEntry, useJournalEntries, useStornoJournalEntry } from "./useJournalEntries";
 import "./JournalEntriesPage.css";
 
+type Tab = "buchungen" | "kontenblatt";
+
 export function JournalEntriesPage() {
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
-  const [propertyId, setPropertyId] = useState<number | "">("");
+  const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
 
-  const selectedPropertyId = propertyId === "" ? undefined : propertyId;
-  const { data: entries, isLoading: entriesLoading } = useJournalEntries(selectedPropertyId);
-  const { data: accounts } = useAccounts({ property_id: selectedPropertyId });
-  const { data: units } = useUnits(selectedPropertyId);
+  const { data: entries, isLoading: entriesLoading } = useJournalEntries(propertyId ?? undefined);
+  const { data: accounts } = useAccounts({ property_id: propertyId ?? undefined });
+  const { data: units } = useUnits(propertyId ?? undefined);
 
-  const createMutation = useCreateJournalEntry(selectedPropertyId ?? -1);
-  const stornoMutation = useStornoJournalEntry(selectedPropertyId ?? -1);
-  const createPaymentMutation = useCreatePayment(selectedPropertyId ?? -1);
+  const createMutation = useCreateJournalEntry(propertyId ?? -1);
+  const stornoMutation = useStornoJournalEntry(propertyId ?? -1);
+  const createPaymentMutation = useCreatePayment(propertyId ?? -1);
 
+  const [tab, setTab] = useState<Tab>("buchungen");
   const [mode, setMode] = useState<"idle" | "creating" | "recording-payment">("idle");
   const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -66,35 +68,57 @@ export function JournalEntriesPage() {
     entries?.filter((e) => e.reversed_entry_id != null).map((e) => e.reversed_entry_id) ?? [],
   );
 
+  if (propertiesLoading) {
+    return (
+      <div className="journal-entries-page">
+        <Card>
+          <p>Lädt Liegenschaften…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (propertyId == null || properties.length === 0) {
+    return (
+      <div className="journal-entries-page">
+        <Card>
+          <h1>Buchhaltung</h1>
+          <p>Bitte zuerst links in der Sidebar eine Liegenschaft auswählen.</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="journal-entries-page">
       <Card>
-        <h1>Buchhaltung</h1>
-        {propertiesLoading && <p>Lädt Liegenschaften…</p>}
-        <label className="journal-entries-page__property-select">
-          Liegenschaft
-          <select
-            value={propertyId}
-            onChange={(e) => {
-              setPropertyId(e.target.value ? Number(e.target.value) : "");
-              setMode("idle");
-              setExpandedEntryId(null);
-            }}
+        <h1>Buchhaltung – {property?.name}</h1>
+        <div className="journal-entries-page__tabs">
+          <button
+            type="button"
+            className={
+              "journal-entries-page__tab" + (tab === "buchungen" ? " journal-entries-page__tab--active" : "")
+            }
+            onClick={() => setTab("buchungen")}
           >
-            <option value="">– bitte wählen –</option>
-            {properties?.map((p) => (
-              <option key={p.property_id} value={p.property_id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            Buchungen
+          </button>
+          <button
+            type="button"
+            className={
+              "journal-entries-page__tab" + (tab === "kontenblatt" ? " journal-entries-page__tab--active" : "")
+            }
+            onClick={() => setTab("kontenblatt")}
+          >
+            Kontenblatt
+          </button>
+        </div>
       </Card>
 
-      {selectedPropertyId !== undefined && (
+      {tab === "buchungen" && (
         <>
           <Card>
-            <PropertyAccountsManager propertyId={selectedPropertyId} />
+            <PropertyAccountsManager propertyId={propertyId} />
           </Card>
 
           <Card>
@@ -195,11 +219,18 @@ export function JournalEntriesPage() {
         </>
       )}
 
-      {mode === "creating" && selectedPropertyId !== undefined && (
+      {tab === "kontenblatt" && (
+        <Card>
+          <h2>Kontenblatt</h2>
+          <AccountLedgerPanel propertyId={propertyId} />
+        </Card>
+      )}
+
+      {mode === "creating" && tab === "buchungen" && (
         <Card>
           <h2>Neue Buchung erfassen</h2>
           <JournalEntryForm
-            propertyId={selectedPropertyId}
+            propertyId={propertyId}
             onSubmit={handleCreate}
             onCancel={() => setMode("idle")}
             isSubmitting={createMutation.isPending}
@@ -208,7 +239,7 @@ export function JournalEntriesPage() {
         </Card>
       )}
 
-      {mode === "recording-payment" && selectedPropertyId !== undefined && (
+      {mode === "recording-payment" && tab === "buchungen" && (
         <Card>
           <h2>Zahlungseingang erfassen</h2>
           <PaymentForm

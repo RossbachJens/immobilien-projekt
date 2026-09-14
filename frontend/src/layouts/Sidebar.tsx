@@ -1,6 +1,7 @@
 // frontend/src/layouts/Sidebar.tsx
 import { NavLink } from "react-router-dom";
 
+import { useCurrentProperty } from "../context/PropertyContext";
 import { useCurrentUser } from "../features/auth/useAuth";
 import "./Sidebar.css";
 
@@ -14,7 +15,6 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/units", label: "Einheiten" },
   { to: "/owners", label: "Eigentümer" },
   { to: "/tenants", label: "Mieter" },
-  // frontend/src/layouts/Sidebar.tsx — NAV_ITEMS ergänzen (nach "Buchhaltung")
   { to: "/journal-entries", label: "Buchhaltung" },
   { to: "/hausgeld-overview", label: "Hausgeldübersicht" },
   { to: "/resolutions", label: "Beschluss-Sammlung" },
@@ -25,23 +25,38 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/bank-accounts", label: "Bankkonten" },
   { to: "/meetings", label: "Versammlungen" },
   { to: "/documents", label: "Dokumente" },
-  
 ];
 
 /**
- * Linke Navigations-Sidebar. War bis Phase 3 Teil der Navbar (horizontale
- * Link-Leiste) - ab Phase 4 sind es zu viele gleichrangige Module für eine
- * Kopfzeile geworden (siehe PROJECTPLAN.md, Grundsatzentscheidung
- * "Navigation"). Rendert nichts, solange kein User eingeloggt ist - analog
- * zum bisherigen Verhalten in Navbar.
+ * Linke Navigations-Sidebar. Trägt seit der zentralen Liegenschaftsauswahl
+ * zusätzlich das Property-Dropdown oberhalb der Modul-Links (siehe
+ * PropertyContext.tsx) - Feature-Seiten lesen die Auswahl über
+ * useCurrentProperty() statt sie selbst zu verwalten.
  */
 export function Sidebar() {
   const { data: user } = useCurrentUser();
+  const { propertyId, properties, isLoading, setPropertyId } = useCurrentProperty();
 
   if (!user) return null;
 
   return (
     <aside className="sidebar">
+      <label className="sidebar__property-select">
+        Liegenschaft
+        <select
+          value={propertyId ?? ""}
+          onChange={(e) => setPropertyId(e.target.value ? Number(e.target.value) : null)}
+          disabled={isLoading || properties.length === 0}
+        >
+          {properties.length === 0 && <option value="">– keine Liegenschaft –</option>}
+          {properties.map((p) => (
+            <option key={p.property_id} value={p.property_id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <nav className="sidebar__nav">
         {NAV_ITEMS.map((item) => (
           <NavLink

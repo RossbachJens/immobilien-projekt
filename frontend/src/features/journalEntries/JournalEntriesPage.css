@@ -109,3 +109,25 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.journal-entries-page__tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: var(--space-1);
+  border-bottom: 1px solid #eee;
+}
+
+.journal-entries-page__tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  color: #666;
+  border-bottom: 2px solid transparent;
+}
+
+.journal-entries-page__tab--active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
