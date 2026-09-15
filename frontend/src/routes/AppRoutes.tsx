@@ -15,21 +15,15 @@ import { MainLayout } from "../layouts/MainLayout";
 import { AdminRoute } from "./AdminRoute";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ResolutionsPage } from "../features/resolutions/ResolutionsPage";
-// frontend/src/routes/AppRoutes.tsx — Imports + Routes ergänzen
 import { BudgetPlansPage } from "../features/budgetPlans/BudgetPlansPage";
 import { SpecialAssessmentsPage } from "../features/specialAssessments/SpecialAssessmentsPage";
-// frontend/src/routes/AppRoutes.tsx — Import + Route ergänzen
 import { SettlementPeriodsPage } from "../features/settlementPeriods/SettlementPeriodsPage";
-// frontend/src/routes/AppRoutes.tsx — Imports + Route ergänzen
 import { BankAccountsPage } from "../features/bankAccounts/BankAccountsPage";
 import { MeetingsPage } from "../features/meetings/MeetingsPage";
 import { AllocationKeysPage } from "../features/allocationKeys/AllocationKeysPage";
-// frontend/src/routes/AppRoutes.tsx — Import + Route ergänzen
 import { HausgeldOverviewPage } from "../features/hausgeldOverview/HausgeldOverviewPage";
-// frontend/src/routes/AppRoutes.tsx — Import ergänzen
 import { DocumentsPage } from "../features/documents/DocumentsPage";
-
-// ...
+import { BackupsPage } from "../features/backups/BackupsPage";
 
 export function AppRoutes() {
   return (
@@ -60,6 +54,16 @@ export function AppRoutes() {
             <ProtectedRoute>
               <AdminRoute>
                 <UsersPage />
+              </AdminRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/backups"
+          element={
+            <ProtectedRoute>
+              <AdminRoute>
+                <BackupsPage />
               </AdminRoute>
             </ProtectedRoute>
           }

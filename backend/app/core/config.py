@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
 
+    # Backup-Verwaltung: interne Admin-API im 'backup'-Service (siehe
+    # backup-service/app/main.py). Das Hauptbackend bekommt bewusst KEINE
+    # Superuser-DB-Credentials für pg_dump/pg_restore, sondern spricht nur
+    # diese eng begrenzte interne API an - Secret MUSS mit dem Wert im
+    # 'backup'-Service übereinstimmen (siehe docker-compose.yml).
+    backup_service_url: str = "http://backup:8001"
+    backup_service_secret: str = "change-me-in-production"
+
     # CORS
     cors_origins: list[str] = ["http://localhost:5173"]
 

@@ -70,14 +70,24 @@ export function Sidebar() {
           </NavLink>
         ))}
         {user.is_admin && (
-          <NavLink
-            to="/users"
-            className={({ isActive }) =>
-              "sidebar__link" + (isActive ? " sidebar__link--active" : "")
-            }
-          >
-            Nutzerverwaltung
-          </NavLink>
+          <>
+            <NavLink
+              to="/users"
+              className={({ isActive }) =>
+                "sidebar__link" + (isActive ? " sidebar__link--active" : "")
+              }
+            >
+              Nutzerverwaltung
+            </NavLink>
+            <NavLink
+              to="/backups"
+              className={({ isActive }) =>
+                "sidebar__link" + (isActive ? " sidebar__link--active" : "")
+              }
+            >
+              Backups
+            </NavLink>
+          </>
         )}
       </nav>
     </aside>

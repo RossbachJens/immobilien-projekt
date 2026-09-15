@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.access_log import AccessLogMiddleware
 from app.core.config import settings
 from app.routers import (
-    accounts, allocation_keys, auth, bank_accounts, budget_plans, documents, health,
+    accounts, allocation_keys, auth, backups, bank_accounts, budget_plans, documents, health,
     journal_entries, meetings, owners, payments, properties, reserve_fund, resolutions,
     settlement_periods, special_assessments, tenants, units, users,
 )
@@ -52,13 +52,14 @@ app.include_router(bank_accounts.router)
 app.include_router(allocation_keys.router)
 app.include_router(meetings.router)
 app.include_router(documents.router)
+app.include_router(backups.router)
 
 
 # Noch offen:
 #   - Google-SSO-Login-Flow
 #   - Rate-Limiting, Logging ohne PII, Key-Rotation, produktiver E-Mail-Versand
 #   - access_log-Middleware: bisher nur owners/tenants/users abgedeckt -
-#     documents (inkl. Downloads) und generierte PDFs (Abrechnungen,
+#     documents (inkl. Downloads), backups und generierte PDFs (Abrechnungen,
 #     Niederschriften, Einladungen) folgen in einem späteren Durchgang
 #   - rollenbasierte Filterung + Postgres RLS-Policies: erledigt
 #     (Migration 0014_row_level_security)

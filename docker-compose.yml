@@ -62,6 +62,13 @@ services:
       # Dev-DB oben.
       TEST_DATABASE_URL: postgresql+psycopg://app_user:app_user_dev_password@db_test:5432/immobilien_test
       TEST_MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db_test:5432/immobilien_test
+      # Backup-Verwaltung fürs Admin-Frontend (siehe backup-service/) - das
+      # Hauptbackend bekommt bewusst KEINE Superuser-DB-Credentials, sondern
+      # spricht nur diese eng begrenzte interne API an. Secret MUSS mit dem
+      # Wert im 'backup'-Service unten übereinstimmen - in Produktion aus
+      # einem Secret-Manager, wie JWT_SECRET/PII_ENCRYPTION_KEY.
+      BACKUP_SERVICE_URL: http://backup:8001
+      BACKUP_SERVICE_SECRET: change-me-in-production-backup-secret
     ports:
       - "8000:8000"
     volumes:
@@ -83,16 +90,22 @@ services:
     depends_on:
       - backend
 
-  # Regelmäßige pg_dump-Backups der ECHTEN Datenbank ('db', nicht db_test).
-  # Läuft als PGUSER=postgres (Superuser) - bewusst NICHT als app_user: RLS
-  # gilt auch für pg_dump-Verbindungen, ein Dump durch eine eingeschränkte
-  # Rolle würde daher nur die für sie sichtbaren Zeilen exportieren. Ein
-  # Backup muss immer den vollständigen Datenbestand sichern. Startet
-  # nicht automatisch mit 'docker compose up' (siehe profiles).
+  # Regelmäßige pg_dump-Backups der ECHTEN Datenbank ('db', nicht db_test)
+  # PLUS eine interne Admin-API für die Backup-Verwaltung übers Frontend
+  # (siehe backup-service/app/main.py). Läuft als PGUSER=postgres
+  # (Superuser) - bewusst NICHT als app_user: RLS gilt auch für pg_dump-
+  # Verbindungen, ein Dump durch eine eingeschränkte Rolle würde daher nur
+  # die für sie sichtbaren Zeilen exportieren. Ein Backup muss immer den
+  # vollständigen Datenbestand sichern.
+  #
+  # Bewusst OHNE 'profiles' (anders als früher) - die Admin-API soll immer
+  # erreichbar sein, sobald das Backend läuft, nicht nur bei explizit
+  # gestartetem Backup-Profil. Kein Port nach außen published - nur über
+  # das Docker-Netz vom 'backend'-Service unter 'http://backup:8001'
+  # erreichbar.
   backup:
-    image: postgres:16
+    build: ./backup-service
     restart: unless-stopped
-    profiles: ["backup"]
     environment:
       PGHOST: db
       PGPORT: "5432"
@@ -104,10 +117,11 @@ services:
       # gelöscht) - siehe scripts/backup-loop.sh.
       BACKUP_INTERVAL_SECONDS: "86400"
       BACKUP_RETENTION_COUNT: "14"
+      # MUSS mit backend.environment.BACKUP_SERVICE_SECRET übereinstimmen.
+      BACKUP_SERVICE_SECRET: change-me-in-production-backup-secret
     volumes:
       - ./backups:/backups
       - ./scripts/backup-loop.sh:/backup-loop.sh:ro
-    entrypoint: ["/bin/sh", "/backup-loop.sh"]
     depends_on:
       db:
         condition: service_healthy
