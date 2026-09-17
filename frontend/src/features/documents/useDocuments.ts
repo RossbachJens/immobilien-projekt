@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteDocument,
   listDocuments,
+  updateDocumentJournalEntryLink,
   uploadDocument,
+  type DocumentJournalEntryLinkPayload,
   type DocumentUploadPayload,
   type ListDocumentsParams,
 } from "./api";
@@ -23,6 +25,20 @@ export function useUploadDocument(params?: ListDocumentsParams) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: DocumentUploadPayload) => uploadDocument(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: documentsKey(params) }),
+  });
+}
+
+export function useUpdateDocumentJournalEntryLink(params?: ListDocumentsParams) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      payload,
+    }: {
+      documentId: number;
+      payload: DocumentJournalEntryLinkPayload;
+    }) => updateDocumentJournalEntryLink(documentId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: documentsKey(params) }),
   });
 }

@@ -12,6 +12,7 @@ import { PaymentForm } from "../payments/PaymentForm";
 import { useCreatePayment } from "../payments/usePayments";
 import { useUnits } from "../units/useUnits";
 import type { JournalEntryPayload } from "./api";
+import { JournalEntryDocuments } from "./JournalEntryDocuments";
 import { JournalEntryForm } from "./JournalEntryForm";
 import { useCreateJournalEntry, useJournalEntries, useStornoJournalEntry } from "./useJournalEntries";
 import "./JournalEntriesPage.css";
@@ -32,6 +33,7 @@ export function JournalEntriesPage() {
   const [tab, setTab] = useState<Tab>("buchungen");
   const [mode, setMode] = useState<"idle" | "creating" | "recording-payment">("idle");
   const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
+  const [expandedDocumentsEntryId, setExpandedDocumentsEntryId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   function unitLabel(unitId: number | null): string {
@@ -175,6 +177,16 @@ export function JournalEntriesPage() {
                         >
                           {expandedEntryId === entry.entry_id ? "Zeilen ausblenden" : "Zeilen anzeigen"}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedDocumentsEntryId(
+                              expandedDocumentsEntryId === entry.entry_id ? null : entry.entry_id,
+                            )
+                          }
+                        >
+                          {expandedDocumentsEntryId === entry.entry_id ? "Belege ausblenden" : "Belege"}
+                        </button>
                         {!isStorno && !isReversed && (
                           <button type="button" onClick={() => handleStorno(entry.entry_id)}>
                             Stornieren
@@ -210,6 +222,10 @@ export function JournalEntriesPage() {
                           })}
                         </tbody>
                       </table>
+                    )}
+
+                    {expandedDocumentsEntryId === entry.entry_id && (
+                      <JournalEntryDocuments propertyId={propertyId} journalEntryId={entry.entry_id} />
                     )}
                   </li>
                 );

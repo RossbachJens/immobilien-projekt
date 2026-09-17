@@ -1,4 +1,4 @@
-# Projektplan: FastAPI-Backend & React-Frontend für die Immobilien-/WEG-Datenbank
+## Projektplan: FastAPI-Backend & React-Frontend für die Immobilien-/WEG-Datenbank
 
 ## Grundsatzentscheidungen (festgehalten)
 - **Zugriffskontrolle:** Defense-in-Depth — FastAPI filtert Queries nach Rolle/Zuordnung
@@ -166,8 +166,26 @@
   bleibt ein gezielt an eine andere Einheit/Person gebundenes Dokument für Dritte
   verborgen. Listenabfragen laden den Dateiinhalt bewusst nicht mit (SQLAlchemy
   `defer(Document.content)`), nur der Download-Endpunkt fragt ihn gezielt ab.
-
-
+- **Backup-Verwaltung übers Admin-Frontend:** Der bestehende `backup`-Service
+  (automatischer `pg_dump` als Postgres-Superuser, `scripts/backup-loop.sh`)
+  bekommt zusätzlich einen eigenen, kleinen Container (`backup-service/`, Basis
+  `postgres:16` + Python, garantiert pg_dump/pg_restore-Versionsgleichheit mit
+  `db`) mit einer schlanken internen HTTP-API (Port 8001, kein Port-Publish, nur
+  übers Docker-Netz erreichbar) für Liste/Trigger/Download/Löschen/Restore.
+  Bewusst **kein** Superuser-DB-Zugriff im Hauptbackend (`app_user`,
+  RLS-eingeschränkt seit Phase 7) - das Hauptbackend spricht diese API stattdessen
+  über einen admin-only Router (`app/routers/backups.py`, `get_current_admin`)
+  per gemeinsamem Secret (`BACKUP_SERVICE_SECRET`-Header) an, analog zum Prinzip
+  von `migration_database_url` vs. `database_url` (getrennte Rechte für getrennte
+  Zwecke, keine Vermischung). Ein Restore legt automatisch zuerst ein
+  `pre_restore_...`-Sicherheitsbackup des aktuellen Stands an, trennt aktive
+  DB-Verbindungen (`pg_terminate_backend`, nötig für `pg_restore --clean`) und
+  verlangt eine `confirm_filename`-Bestätigung sowohl vom Hauptbackend als auch
+  nochmal manuell im Frontend - ein Restore ist destruktiv und mit kurzzeitiger
+  Downtime verbunden, der einzige Rückweg läuft über das Sicherheitsbackup. Der
+  `backup`-Service läuft seitdem bewusst **ohne** `profiles: ["backup"]` mehr
+  (vorher nur optional zuschaltbar) - die Admin-API soll immer erreichbar sein,
+  sobald das Backend läuft, nicht nur bei explizit gestartetem Backup-Profil.
 
 ## Architektur
 ```
@@ -239,7 +257,7 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 | 4 | Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung | Wirtschaftspläne je Objekt/Jahr (`budget_plans`, `budget_positions`), Verteilung je Einheit nach MEA/Umlageschlüssel (`unit_budget_shares`), Sonderumlagen (`special_assessments`, `unit_special_assessment_shares`), Beschluss-Sammlung § 24 WEG (`resolution_collection`, dauerhaft aufbewahrt, kein regulärer Soft-Delete-Lifecycle) | 2, 3 |
 | 5 | Nebenkostenabrechnung | Umlageschlüssel-Berechnung (`unit_allocation_keys` mit Gültigkeitszeitraum, Wechsel nur zum 01.01. wirksam), Zahlungseingang, PDF-Export je Einheit (siehe Beispiel „Einzelabrechnung 2024 Wohnung 4"), Rücklagendarstellung/Vermögensaufstellung, Bescheinigung i.S.d. § 35a EStG | 3, 4 |
 | 6 | Reale Bankkonten je Liegenschaft | `property_bank_accounts` (Trennungsgebot § 27 Abs. 5 WEG), Girokonto/Rücklagenkonten mit Gültigkeitszeitraum statt `is_active` | 3 |
-| 7 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups, Key-Rotation, E2E-Tests, PostgreSQL-RLS-Durchsetzung, Google-SSO-Login-Flow, `access_log`-Middleware, produktiver E-Mail-Versand | laufend |
+| 7 | Härtung & Betrieb | Rate-Limiting, Logging ohne PII, Backups (inkl. Admin-Verwaltung übers Frontend), Key-Rotation, E2E-Tests, PostgreSQL-RLS-Durchsetzung, Google-SSO-Login-Flow, `access_log`-Middleware, produktiver E-Mail-Versand | laufend |
 | 8 | Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt, ursprünglich nicht in der Phasenliste)* | `owner_meetings`, `meeting_agenda_items`, Verknüpfung mit `resolution_collection`, Einladung/Niederschrift als PDF (WeasyPrint), Umlaufbeschluss über dieselbe Struktur | 4 |
 | 9 | Mietsollstellung & SEPA *(verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)* | `03_procedures.sql`, Pain.008-XML-Export | 3 |
 | 10 | Dokumentenverwaltung (DMS) *(informell ergänzt, ursprünglich nicht in der Phasenliste)* | `documents`-Tabelle (Dateiinhalt als BYTEA), Upload/Download/Löschen, optionale Verknüpfung mit Einheit/Eigentümer/Mieter/Abrechnung/Buchung/Versammlung, dreistufige Sichtbarkeit | 2 |
@@ -276,7 +294,13 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
   Bescheinigung i.S.d. § 35a EStG als weiterer optionaler PDF-Abschnitt.
 - **Phase 6:** Jede Liegenschaft verfügt über mindestens ein Giro- und ein Rücklagenkonto mit
   eigener IBAN und Gültigkeitszeitraum. ✅ erledigt
-- **Phase 7:** Vor Produktivbetrieb abgeschlossen. *(offen)*
+- **Phase 7:** Vor Produktivbetrieb abgeschlossen. *(offen)* — Backup-Verwaltung übers
+  Admin-Frontend ist umgesetzt: eigenständiger `backup-service`-Container mit interner
+  Admin-API (Liste, manuelles Auslösen, Download, Löschen, Restore inkl. automatischem
+  Sicherheitsbackup vor jedem Restore), admin-only Router im Hauptbackend als Proxy,
+  `features/backups` im Frontend. ✅ erledigt. Weiterhin offen: RLS-Durchsetzung,
+  Google-SSO-Flow, `access_log`-Middleware (deckt Backups noch nicht ab), produktiver
+  E-Mail-Versand, Rate-Limiting, Key-Rotation, E2E-Tests.
 - **Phase 8:** Eine Eigentümerversammlung kann angelegt, Einladung und Niederschrift als PDF
   erzeugt und Beschlüsse daraus in die Beschluss-Sammlung übernommen werden; ein
   Umlaufbeschluss läuft über dieselbe Struktur. ✅ erledigt, inklusive der strukturierten
@@ -300,7 +324,7 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - [x] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung *(Backend + Frontend ✅; Positionen bis zur Beschlussfassung editierbar/löschbar ✅)*
 - [x] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export, Zahlungseingang (integriert in die Buchhaltungsseite) und eigenständiges Umlageschlüssel-CRUD-Modul ✅; zusätzlich Rücklagendarstellung/Vermögensaufstellung und Bescheinigung i.S.d. § 35a EStG ✅)*
 - [x] Phase 6 — Reale Bankkonten je Liegenschaft *(`property_bank_accounts` mit Gültigkeitszeitraum ✅)*
-- [ ] Phase 7 — Härtung & Betrieb *(offen: RLS-Durchsetzung, Google-SSO-Flow, `access_log`-Middleware, produktiver E-Mail-Versand, Rate-Limiting, Backups, Key-Rotation, E2E-Tests)*
+- [ ] Phase 7 — Härtung & Betrieb *(Backup-Verwaltung übers Admin-Frontend — `backup-service` mit interner Admin-API, admin-only Proxy-Router, Restore mit automatischem Sicherheitsbackup ✅ erledigt; weiterhin offen: RLS-Durchsetzung, Google-SSO-Flow, `access_log`-Middleware, produktiver E-Mail-Versand, Rate-Limiting, Key-Rotation, E2E-Tests)*
 - [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅; strukturierte Niederschrift inkl. Kopfdaten, TOP-Protokolltext, Abstimmungsergebnissen und zugehörigem Frontend-Formular ✅)*
 - [ ] Phase 9 — Mietsollstellung & SEPA *(offen, verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)*
 - [x] Phase 10 — Dokumentenverwaltung (DMS) *(informell ergänzt; Upload/Download/Löschen mit Kategorien, optionaler Verknüpfung und gestaffelter Sichtbarkeit ✅; automatische Archivierung generierter PDFs offen)*

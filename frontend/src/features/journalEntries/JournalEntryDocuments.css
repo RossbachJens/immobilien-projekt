@@ -1,0 +1,100 @@
+/* frontend/src/features/journalEntries/JournalEntryDocuments.css */
+.journal-entry-documents {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.journal-entry-documents__empty {
+  color: #777;
+  font-style: italic;
+}
+
+.journal-entry-documents__list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.journal-entry-documents__list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.journal-entry-documents__list a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.journal-entry-documents__category {
+  color: #777;
+  font-size: 0.85rem;
+}
+
+.journal-entry-documents__list button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.journal-entry-documents__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.journal-entry-documents__actions button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.journal-entry-documents__link-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 420px;
+}
+
+.journal-entry-documents__link-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.journal-entry-documents__error {
+  color: var(--color-error);
+}
+
+.journal-entry-documents__link-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.journal-entry-documents__link-form-actions button {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.journal-entry-documents__link-form-actions button:first-child {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+.journal-entry-documents__link-form-actions button:last-child {
+  background-color: var(--color-light);
+}

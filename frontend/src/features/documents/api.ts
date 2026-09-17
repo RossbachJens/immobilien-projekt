@@ -45,11 +45,16 @@ export interface DocumentUploadPayload {
   file: File;
 }
 
+export interface DocumentJournalEntryLinkPayload {
+  journal_entry_id: number | null;
+}
+
 export interface ListDocumentsParams {
   property_id?: number;
   category?: DocumentCategory;
   unit_id?: number;
   settlement_id?: number;
+  journal_entry_id?: number;
 }
 
 export async function listDocuments(params?: ListDocumentsParams): Promise<Document[]> {
@@ -72,6 +77,14 @@ export async function uploadDocument(payload: DocumentUploadPayload): Promise<Do
   formData.append("file", payload.file);
 
   const { data } = await apiClient.post<Document>("/documents", formData);
+  return data;
+}
+
+export async function updateDocumentJournalEntryLink(
+  documentId: number,
+  payload: DocumentJournalEntryLinkPayload,
+): Promise<Document> {
+  const { data } = await apiClient.patch<Document>(`/documents/${documentId}/journal-entry`, payload);
   return data;
 }
 

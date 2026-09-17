@@ -21,6 +21,12 @@
   font: inherit;
 }
 
+.document-upload-form__hint {
+  color: #666;
+  font-style: italic;
+  margin: 0;
+}
+
 .document-upload-form__error {
   color: var(--color-error);
 }

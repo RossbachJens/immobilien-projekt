@@ -24,13 +24,14 @@ Dieses Projekt stellt eine revisionssichere, datenbankseitig validierte Software
 *   **Vollständiges Stammdaten-CRUD:** Objekte, Einheiten und Eigentümer-/Mieter-Stammdaten (inkl. verschlüsselter Bankverbindung) lassen sich über die API und das Frontend vollständig anlegen, ändern und (soft-)löschen. Eigentümer/Mieter benötigen dafür keinen eigenen Online-Zugang - dieser wird optional und getrennt über die Nutzerverwaltung vergeben.
 *   **Buchungen bleiben liegenschaftsbezogen:** Eine manuelle Buchung wird nie direkt einer Einheit zugeordnet - die Aufteilung auf Einheiten erfolgt automatisiert erst bei der Nebenkostenabrechnung über den Umlageschlüssel.
 *   **Sidebar-Navigation:** Mit der wachsenden Zahl an Modulen sitzt die Navigation nicht mehr in der Kopfzeile, sondern als linke Sidebar (`frontend/src/layouts/Sidebar.tsx`); die Navbar zeigt nur noch Logo sowie Nutzer-/Logout-Bereich.
+*   **Backup-Verwaltung übers Admin-Frontend:** Automatische tägliche `pg_dump`-Backups (Postgres-Superuser) liegen nicht mehr nur unsichtbar im Dateisystem, sondern sind für Admins direkt im Frontend verwaltbar (`/backups`) - Anzeigen, manuelles Auslösen, Herunterladen und Löschen bestehender Dumps sowie eine Wiederherstellung. Läuft über einen eigenständigen `backup-service`-Container mit interner, nur im Docker-Netz erreichbarer Admin-API (kein Port nach außen); das Hauptbackend (`app_user`, RLS-eingeschränkt) bekommt bewusst **keine** Superuser-DB-Credentials, sondern spricht diese API per gemeinsamem Secret an. Ein Restore legt automatisch zuerst ein Sicherheitsbackup des aktuellen Stands an, trennt aktive DB-Verbindungen und verlangt eine doppelte Bestätigung des Dateinamens (Backend und Frontend), bevor der komplette Datenbestand ersetzt wird.
 
 ## 📁 Projektstruktur
 
 ```text
 immobilien-project/
 ├── .gitignore                     # Schützt Passwörter, Secrets und DB-Ordner vor Git
-├── docker-compose.yml              # Orchestriert PostgreSQL 16, Backend und Frontend
+├── docker-compose.yml              # Orchestriert PostgreSQL 16, Backend, Frontend und Backup-Service
 ├── README.md                      # Projektdokumentation
 ├── PROJECTPLAN.md                 # Lebendes Dokument: Phasenplan, Grundsatzentscheidungen, Status
 ├── init-scripts/                  # SQL-Skripte (werden alphabetisch initialisiert)
@@ -39,6 +40,14 @@ immobilien-project/
 │   ├── 03_procedures.sql          # Prozedur für automatische Miet-Sollstellungen
 │   ├── 04_testdata.sql            # Seeding für eine gemischte WEG (kein Admin mehr, siehe unten)
 │   └── 05_skr04_kontenrahmen.sql  # Kuratierter globaler SKR04-Basisrahmen (Klassen 0-6)
+├── scripts/
+│   └── backup-loop.sh             # Periodischer pg_dump-Loop (läuft im backup-service-Container)
+├── backup-service/                # Interne Admin-API für Backup-Verwaltung (Liste/Trigger/Download/Löschen/Restore)
+│   ├── Dockerfile                 # Basis postgres:16 (garantiert pg_dump/pg_restore-Kompatibilität) + Python
+│   ├── entrypoint.sh              # Startet backup-loop.sh im Hintergrund + Admin-API im Vordergrund
+│   ├── requirements.txt
+│   └── app/
+│       └── main.py                # FastAPI-Mini-Service, Secret-Auth über X-Backup-Service-Secret
 ├── backend/
 │   ├── alembic/versions/          # Schema-Änderungen NACH der 01_schema.sql-Baseline
 │   │   ├── 0001_property_accounts.py
@@ -56,6 +65,7 @@ immobilien-project/
 │   │   └── 0013_documents.py                # Dokumentenverwaltung (DMS)
 │   └── app/
 │       ├── models/ · schemas/ · routers/ · core/ · services/   # FastAPI-Anwendung (SQLAlchemy 2.0, Pydantic)
+│       │                                                        # inkl. app/core/backup_client.py + app/routers/backups.py
 │       └── cli.py                 # CLI zum Anlegen des ersten Admin-Accounts
 └── frontend/
     └── src/
@@ -65,7 +75,7 @@ immobilien-project/
                                     # journalEntries, payments, resolutions, budgetPlans,
                                     # specialAssessments, settlementPeriods, reserveFund,
                                     # bankAccounts, allocationKeys, meetings, documents,
-                                    # auth, health
+                                    # backups, auth, health
 ```
 
 ## 🔑 Erster Admin-Account
@@ -83,10 +93,10 @@ docker compose exec backend python -m app.cli create-admin \
 
 ## 📌 Aktueller Stand & offene Punkte
 
-Abgeschlossen sind die Phasen 0–6 sowie - zusätzlich zur ursprünglichen Phasenplanung - Eigentümerversammlungen inkl. Umlaufbeschluss (Backend und Frontend, inkl. strukturierter Niederschrift), Rücklagendarstellung/Vermögensaufstellung, eine Bescheinigung i.S.d. § 35a EStG sowie eine erste Dokumentenverwaltung. Details und der vollständige Phasenplan stehen in `PROJECTPLAN.md`.
+Abgeschlossen sind die Phasen 0–6 sowie - zusätzlich zur ursprünglichen Phasenplanung - Eigentümerversammlungen inkl. Umlaufbeschluss (Backend und Frontend, inkl. strukturierter Niederschrift), Rücklagendarstellung/Vermögensaufstellung, eine Bescheinigung i.S.d. § 35a EStG sowie eine erste Dokumentenverwaltung. Aus Phase 7 ist die Backup-Verwaltung übers Admin-Frontend (Anzeigen, manuelles Auslösen, Herunterladen, Löschen, Wiederherstellen über einen eigenständigen `backup-service` mit interner Admin-API) bereits umgesetzt. Details und der vollständige Phasenplan stehen in `PROJECTPLAN.md`.
 
 Noch offen:
 - **Dokumente-Archivierung generierter PDFs:** Die Dokumentenverwaltung (`documents`) deckt bisher nur manuell hochgeladene Dateien ab. Automatisch erzeugte PDFs (Einladungen, Niederschriften, Jahresabrechnungen) landen weiterhin nur als Download beim Erzeugen, nicht zusätzlich im DMS - eine automatische Ablage dorthin ist eine naheliegende spätere Ergänzung.
 - **Bewusst zurückgestellt:** mieterseitige Betriebskostenabrechnung (aktuell nur eigentümerseitige Nebenkostenabrechnung).
-- **Phase 7 (Härtung & Betrieb):** E-Mail-Versand (aktuell nur ein Dev-Token-Stub im Passwort-Reset-Flow), PostgreSQL-Row-Level-Security als zweite Verteidigungslinie neben der Query-Filterung, Google-SSO-Login-Flow (Datenmodell bereits vorbereitet), `access_log`-Middleware, Rate-Limiting, Backups, Key-Rotation, E2E-Tests. Zusätzlich zu prüfen: Verschlüsselung des `documents.content`-Feldes für besonders sensible Kategorien (z. B. Kontoauszüge) analog zur IBAN/BIC-Verschlüsselung.
+- **Phase 7 (Härtung & Betrieb):** E-Mail-Versand (aktuell nur ein Dev-Token-Stub im Passwort-Reset-Flow), PostgreSQL-Row-Level-Security als zweite Verteidigungslinie neben der Query-Filterung, Google-SSO-Login-Flow (Datenmodell bereits vorbereitet), `access_log`-Middleware (deckt Backups noch nicht ab), Rate-Limiting, Key-Rotation, E2E-Tests. Zusätzlich zu prüfen: Verschlüsselung des `documents.content`-Feldes für besonders sensible Kategorien (z. B. Kontoauszüge) analog zur IBAN/BIC-Verschlüsselung.
 - **Mietsollstellung & SEPA-Export (Pain.008):** War ursprünglich als Phase 6 geplant, wurde zugunsten der Bankkonten-Verwaltung je Liegenschaft zurückgestellt und läuft jetzt als eigene, spätere Phase.

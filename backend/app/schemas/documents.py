@@ -27,3 +27,14 @@ class DocumentOut(BaseModel):
     visibility: str
     uploaded_by: int | None
     created_at: datetime
+
+
+class DocumentJournalEntryLinkUpdate(BaseModel):
+    """Verknüpft (gesetzte ID) oder löst (None) die Beleg-Zuordnung eines
+    bereits vorhandenen Dokuments zu einer Buchung nachträglich - Ergänzung
+    zum direkten Verknüpfen beim Upload (POST /documents). Bewusst ein
+    Pflichtfeld ohne Default statt PATCH-Semantik mit exclude_unset: dieser
+    Endpoint hat genau einen Zweck (verknüpfen/lösen), der Aufruf muss daher
+    immer explizit sagen, welcher der beiden Fälle gemeint ist."""
+
+    journal_entry_id: int | None

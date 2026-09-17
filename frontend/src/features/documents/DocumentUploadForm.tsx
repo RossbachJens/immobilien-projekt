@@ -23,6 +23,10 @@ const VISIBILITY_LABELS: Record<DocumentVisibility, string> = {
 
 interface DocumentUploadFormProps {
   propertyId: number;
+  // Gesetzt, wenn der Upload aus dem Kontext einer Buchung heraus gestartet
+  // wurde (siehe features/journalEntries/JournalEntryDocuments.tsx) - das
+  // Dokument wird dann direkt beim Anlegen als Beleg verknüpft.
+  journalEntryId?: number | null;
   onSubmit: (payload: DocumentUploadPayload) => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -31,6 +35,7 @@ interface DocumentUploadFormProps {
 
 export function DocumentUploadForm({
   propertyId,
+  journalEntryId,
   onSubmit,
   onCancel,
   isSubmitting,
@@ -53,11 +58,21 @@ export function DocumentUploadForm({
       setValidationError("Bitte eine Datei auswählen.");
       return;
     }
-    onSubmit({ property_id: propertyId, category, title, visibility, file });
+    onSubmit({
+      property_id: propertyId,
+      category,
+      title,
+      visibility,
+      journal_entry_id: journalEntryId ?? undefined,
+      file,
+    });
   }
 
   return (
     <form onSubmit={handleSubmit} className="document-upload-form">
+      {journalEntryId != null && (
+        <p className="document-upload-form__hint">Wird direkt als Beleg mit dieser Buchung verknüpft.</p>
+      )}
       <label>
         Kategorie *
         <select value={category} onChange={(e) => setCategory(e.target.value as DocumentCategory)}>

@@ -8,10 +8,11 @@ from app.core.access import accessible_property_ids
 from app.core.deps import get_current_user
 from app.core.roles import resolve_role
 from app.db.session import get_db
+from app.models.buchhaltung import JournalEntry
 from app.models.documents import Document
 from app.models.stammdaten import Property, User
 from app.models.zuordnungen import Lease, LeaseStatus, UnitOwnerHistory
-from app.schemas.documents import DocumentOut
+from app.schemas.documents import DocumentJournalEntryLinkUpdate, DocumentOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -40,6 +41,16 @@ def _check_property_accessible(db: Session, property_id: int, current_user: User
     if property_ids is not None and property_id not in property_ids:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Liegenschaft")
     return property_
+
+
+def _validate_journal_entry_for_document(db: Session, journal_entry_id: int, property_id: int) -> None:
+    """Stellt sicher, dass die zu verknüpfende Buchung existiert und zur
+    selben Liegenschaft gehört wie das Dokument - die Zugreifbarkeit der
+    Liegenschaft selbst wurde bereits über _check_property_accessible() auf
+    dem Dokument geprüft, eine zusätzliche Prüfung hier wäre redundant."""
+    entry = db.get(JournalEntry, journal_entry_id)
+    if entry is None or entry.property_id != property_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Buchung für diese Liegenschaft")
 
 
 def _apply_visibility_filter(query, current_user: User):
@@ -101,12 +112,25 @@ def _get_visible_document(db: Session, document_id: int, current_user: User) -> 
     return document
 
 
+def _get_writable_document(db: Session, document_id: int, current_user: User) -> Document:
+    """Wie _get_visible_document, aber für schreibende Zugriffe (PATCH) -
+    prüft nur Liegenschafts-Zugreifbarkeit statt der feingranularen
+    Sichtbarkeitsregel, da _require_write_role() ohnehin bereits auf
+    Admin/Verwalter einschränkt."""
+    document = db.get(Document, document_id)
+    if document is None or document.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dokument nicht gefunden")
+    _check_property_accessible(db, document.property_id, current_user)
+    return document
+
+
 @router.get("", response_model=list[DocumentOut])
 def list_documents(
     property_id: int | None = None,
     category: str | None = None,
     unit_id: int | None = None,
     settlement_id: int | None = None,
+    journal_entry_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Document]:
@@ -124,6 +148,8 @@ def list_documents(
         query = query.where(Document.unit_id == unit_id)
     if settlement_id is not None:
         query = query.where(Document.settlement_id == settlement_id)
+    if journal_entry_id is not None:
+        query = query.where(Document.journal_entry_id == journal_entry_id)
 
     query = _apply_visibility_filter(query, current_user)
     query = query.order_by(Document.created_at.desc())
@@ -153,6 +179,8 @@ async def upload_document(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannte Kategorie: {category}")
     if visibility not in VISIBILITIES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannte Sichtbarkeit: {visibility}")
+    if journal_entry_id is not None:
+        _validate_journal_entry_for_document(db, journal_entry_id, property_id)
 
     content = await file.read()
     if not content:
@@ -181,6 +209,32 @@ async def upload_document(
         uploaded_by=current_user.user_id,
     )
     db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+@router.patch("/{document_id}/journal-entry", response_model=DocumentOut)
+def update_document_journal_entry_link(
+    document_id: int,
+    payload: DocumentJournalEntryLinkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Document:
+    """Verknüpft ein bereits im Archiv vorhandenes Dokument nachträglich als
+    Beleg mit einer Buchung, oder löst eine bestehende Verknüpfung wieder
+    (journal_entry_id=null). Ein Dokument kann immer nur EINER Buchung als
+    Beleg zugeordnet sein (einfache FK, keine n:m-Tabelle) - das Verknüpfen
+    mit einer bereits einer anderen Buchung zugeordneten Datei hängt sie
+    faktisch um; das Frontend weist im Auswahl-Dropdown darauf hin (siehe
+    features/journalEntries/JournalEntryDocuments.tsx)."""
+    _require_write_role(current_user)
+    document = _get_writable_document(db, document_id, current_user)
+
+    if payload.journal_entry_id is not None:
+        _validate_journal_entry_for_document(db, payload.journal_entry_id, document.property_id)
+
+    document.journal_entry_id = payload.journal_entry_id
     db.commit()
     db.refresh(document)
     return document
