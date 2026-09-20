@@ -45,6 +45,25 @@ class JournalEntryCreate(BaseModel):
         return lines
 
 
+class JournalEntryUpdate(BaseModel):
+    """Volle Korrektur einer bestehenden Buchung (Editable-until-Beschluss-
+    Prinzip, siehe app/routers/journal_entries.py::_require_editable) -
+    bewusst OHNE property_id, die ändert sich bei einer Korrektur nie."""
+
+    entry_date: date
+    document_reference: str | None = Field(default=None, max_length=100)
+    description: str = Field(min_length=1)
+    lines: list[EntryLineCreate] = Field(min_length=2)
+
+    @field_validator("lines")
+    @classmethod
+    def _require_both_directions(cls, lines: list[EntryLineCreate]) -> list[EntryLineCreate]:
+        directions = {line.direction for line in lines}
+        if EntryDirection.debit not in directions or EntryDirection.credit not in directions:
+            raise ValueError("Eine Buchung braucht mindestens eine Soll- und eine Haben-Zeile.")
+        return lines
+
+
 class JournalEntryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

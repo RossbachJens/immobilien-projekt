@@ -15,7 +15,12 @@ import { useUnits } from "../units/useUnits";
 import type { JournalEntryPayload } from "./api";
 import { JournalEntryDocuments } from "./JournalEntryDocuments";
 import { JournalEntryForm, type JournalEntryBelegDraft } from "./JournalEntryForm";
-import { useCreateJournalEntry, useJournalEntries, useStornoJournalEntry } from "./useJournalEntries";
+import {
+  useCreateJournalEntry,
+  useJournalEntries,
+  useStornoJournalEntry,
+  useUpdateJournalEntry,
+} from "./useJournalEntries";
 import "./JournalEntriesPage.css";
 
 type Tab = "buchungen" | "kontenblatt";
@@ -28,12 +33,14 @@ export function JournalEntriesPage() {
   const { data: units } = useUnits(propertyId ?? undefined);
 
   const createMutation = useCreateJournalEntry(propertyId ?? -1);
+  const updateMutation = useUpdateJournalEntry(propertyId ?? -1);
   const stornoMutation = useStornoJournalEntry(propertyId ?? -1);
   const createPaymentMutation = useCreatePayment(propertyId ?? -1);
   const uploadDocumentMutation = useUploadDocument();
 
   const [tab, setTab] = useState<Tab>("buchungen");
-  const [mode, setMode] = useState<"idle" | "creating" | "recording-payment">("idle");
+  // number = entry_id, das gerade bearbeitet wird.
+  const [mode, setMode] = useState<"idle" | "creating" | "recording-payment" | number>("idle");
   const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
   const [expandedDocumentsEntryId, setExpandedDocumentsEntryId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -80,6 +87,26 @@ export function JournalEntriesPage() {
     });
   }
 
+  function handleUpdate(entryId: number, payload: JournalEntryPayload) {
+    setFormError(null);
+    // property_id wird beim Korrigieren nicht mitgeschickt - die
+    // Liegenschaft einer Buchung ändert sich nie (siehe
+    // JournalEntryUpdatePayload/app/schemas/journal_entries.py::JournalEntryUpdate).
+    const { property_id: _propertyId, ...updatePayload } = payload;
+    updateMutation.mutate(
+      { entryId, payload: updatePayload },
+      {
+        onSuccess: () => setMode("idle"),
+        onError: () =>
+          setFormError(
+            "Buchung konnte nicht aktualisiert werden - eventuell ist die zugehörige " +
+              "Nebenkostenabrechnung für diesen Zeitraum bereits abgeschlossen, die Buchung wurde " +
+              "bereits storniert, oder Soll/Haben sind nicht ausgeglichen.",
+          ),
+      },
+    );
+  }
+
   function handlePayment(payload: PaymentPayload) {
     setFormError(null);
     createPaymentMutation.mutate(payload, {
@@ -98,6 +125,8 @@ export function JournalEntriesPage() {
   const reversedEntryIds = new Set(
     entries?.filter((e) => e.reversed_entry_id != null).map((e) => e.reversed_entry_id) ?? [],
   );
+
+  const editingEntry = typeof mode === "number" ? entries?.find((e) => e.entry_id === mode) ?? null : null;
 
   if (propertiesLoading) {
     return (
@@ -174,6 +203,14 @@ export function JournalEntriesPage() {
               {entries?.map((entry) => {
                 const isStorno = entry.reversed_entry_id != null;
                 const isReversed = reversedEntryIds.has(entry.entry_id);
+                // Nur "reine" liegenschaftsbezogene Buchungen sind über diese
+                // Funktion korrigierbar - automatisiert erzeugte Zeilen mit
+                // Einheiten-/Vertragsbezug (Zahlungseingänge, Mietsollstellung)
+                // würden ihre unit_id/lease_id verlieren, da das Formular
+                // diese Felder gar nicht erfasst. Serverseitig zusätzlich
+                // abgesichert (app/routers/journal_entries.py::_require_editable).
+                const isEditable =
+                  !isReversed && entry.lines.every((l) => l.unit_id == null && l.lease_id == null);
                 const total = entry.lines
                   .filter((l) => l.direction === "DEBIT")
                   .reduce((sum, l) => sum + l.amount, 0);
@@ -216,6 +253,11 @@ export function JournalEntriesPage() {
                         >
                           {expandedDocumentsEntryId === entry.entry_id ? "Belege ausblenden" : "Belege"}
                         </button>
+                        {isEditable && (
+                          <button type="button" onClick={() => setMode(entry.entry_id)}>
+                            Bearbeiten
+                          </button>
+                        )}
                         {!isStorno && !isReversed && (
                           <button type="button" onClick={() => handleStorno(entry.entry_id)}>
                             Stornieren
@@ -279,6 +321,21 @@ export function JournalEntriesPage() {
             onSubmit={handleCreate}
             onCancel={() => setMode("idle")}
             isSubmitting={createMutation.isPending}
+            error={formError}
+          />
+        </Card>
+      )}
+
+      {typeof mode === "number" && tab === "buchungen" && editingEntry && (
+        <Card>
+          <h2>Buchung bearbeiten</h2>
+          <JournalEntryForm
+            propertyId={propertyId}
+            initialValues={editingEntry}
+            submitLabel="Änderungen speichern"
+            onSubmit={(payload) => handleUpdate(editingEntry.entry_id, payload)}
+            onCancel={() => setMode("idle")}
+            isSubmitting={updateMutation.isPending}
             error={formError}
           />
         </Card>

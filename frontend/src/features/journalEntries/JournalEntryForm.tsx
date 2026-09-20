@@ -6,7 +6,7 @@ import type { AccountType } from "../accounts/api";
 import { useAccounts } from "../accounts/useAccounts";
 import type { DocumentCategory } from "../documents/api";
 
-import type { EntryDirection, JournalEntryPayload } from "./api";
+import type { EntryDirection, JournalEntry, JournalEntryPayload } from "./api";
 import "./JournalEntryForm.css";
 import { accountLabel, accountLabelShort } from "../accounts/format";
 
@@ -25,8 +25,9 @@ const BELEG_CATEGORIES: DocumentCategory[] = [
 
 // Vom Formular an den Aufrufer gereicht, falls eine Datei ausgewählt wurde -
 // die eigentliche Verknüpfung (journal_entry_id) kann erst NACH dem Anlegen
-// der Buchung erfolgen (siehe JournalEntriesPage.tsx::handleCreate), da das
-// Dokument-Schema eine bereits existierende Buchung voraussetzt.
+// der Buchung erfolgen (siehe JournalEntriesPage.tsx::handleCreate). Nur im
+// Anlege-Modus relevant - im Bearbeiten-Modus ist das Feld ausgeblendet
+// (Belege laufen dort über das separate JournalEntryDocuments-Panel).
 export interface JournalEntryBelegDraft {
   file: File;
   title: string;
@@ -46,6 +47,12 @@ function todayIso(): string {
 
 interface JournalEntryFormProps {
   propertyId: number;
+  // Gesetzt = Bearbeiten einer bestehenden Buchung statt Neuanlage - nur
+  // möglich, solange keine Nebenkostenabrechnung diesen Zeitraum bereits
+  // abgeschlossen hat und die Buchung nicht bereits storniert wurde (siehe
+  // app/routers/journal_entries.py::_require_editable).
+  initialValues?: JournalEntry;
+  submitLabel?: string;
   onSubmit: (payload: JournalEntryPayload, beleg?: JournalEntryBelegDraft) => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -54,14 +61,18 @@ interface JournalEntryFormProps {
 
 export function JournalEntryForm({
   propertyId,
+  initialValues,
+  submitLabel,
   onSubmit,
   onCancel,
   isSubmitting,
   error,
 }: JournalEntryFormProps) {
+  const isEdit = initialValues !== undefined;
+
   // Nur aktive Konten zur Auswahl anbieten - inaktive Konten dürfen zwar in
-  // historischen Buchungen weiter auftauchen, aber für neue Buchungen nicht
-  // mehr wählbar sein.
+  // historischen Buchungen weiter auftauchen, aber für neue/korrigierte
+  // Buchungen nicht mehr wählbar sein.
   const [typeFilter, setTypeFilter] = useState<AccountType | "">("");
   const {
     data: accounts,
@@ -69,18 +80,30 @@ export function JournalEntryForm({
     isError: accountsError,
   } = useAccounts({ property_id: propertyId, is_active: true, type: typeFilter || undefined });
 
-  // Zähler nur für stabile React-keys der dynamischen Zeilen - hat keinen
-  // fachlichen Bezug zur Buchung selbst.
+  // Zähler nur für stabile React-keys der (dynamischen oder vorbefüllten)
+  // Zeilen - hat keinen fachlichen Bezug zur Buchung selbst.
   const lineKeyRef = useRef(0);
-  function makeLine(direction: EntryDirection = "DEBIT"): FormLine {
+  function nextKey(): string {
     lineKeyRef.current += 1;
-    return { key: `line-${lineKeyRef.current}`, accountId: "", direction, amount: "" };
+    return `line-${lineKeyRef.current}`;
+  }
+  function makeLine(direction: EntryDirection = "DEBIT"): FormLine {
+    return { key: nextKey(), accountId: "", direction, amount: "" };
   }
 
-  const [entryDate, setEntryDate] = useState(todayIso());
-  const [documentReference, setDocumentReference] = useState("");
-  const [description, setDescription] = useState("");
-  const [lines, setLines] = useState<FormLine[]>(() => [makeLine("DEBIT"), makeLine("CREDIT")]);
+  const [entryDate, setEntryDate] = useState(initialValues?.entry_date ?? todayIso());
+  const [documentReference, setDocumentReference] = useState(initialValues?.document_reference ?? "");
+  const [description, setDescription] = useState(initialValues?.description ?? "");
+  const [lines, setLines] = useState<FormLine[]>(() =>
+    initialValues
+      ? initialValues.lines.map((l) => ({
+          key: nextKey(),
+          accountId: l.account_id,
+          direction: l.direction,
+          amount: String(l.amount),
+        }))
+      : [makeLine("DEBIT"), makeLine("CREDIT")],
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const [attachFile, setAttachFile] = useState<File | null>(null);
@@ -140,9 +163,10 @@ export function JournalEntryForm({
       })),
     };
 
-    const beleg: JournalEntryBelegDraft | undefined = attachFile
-      ? { file: attachFile, title: attachTitle || description || "Beleg", category: attachCategory }
-      : undefined;
+    const beleg: JournalEntryBelegDraft | undefined =
+      !isEdit && attachFile
+        ? { file: attachFile, title: attachTitle || description || "Beleg", category: attachCategory }
+        : undefined;
 
     onSubmit(payload, beleg);
   }
@@ -168,7 +192,7 @@ export function JournalEntryForm({
 
       <fieldset className="journal-entry-form__lines">
         <legend>Buchungszeilen</legend>
-                <label className="journal-entry-form__type-filter">
+        <label className="journal-entry-form__type-filter">
           Kontoart eingrenzen
           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as AccountType | "")}>
             <option value="">Alle</option>
@@ -179,7 +203,7 @@ export function JournalEntryForm({
           </select>
         </label>
 
-               {accountsLoading && <p className="journal-entry-form__hint">Konten werden geladen…</p>}
+        {accountsLoading && <p className="journal-entry-form__hint">Konten werden geladen…</p>}
         {accountsError && (
           <p className="journal-entry-form__error">Konten konnten nicht geladen werden.</p>
         )}
@@ -189,10 +213,8 @@ export function JournalEntryForm({
           </p>
         )}
 
-         <div className="journal-entry-form__lines-header"></div>
-
         <div className="journal-entry-form__lines-header">
-          <span>Konto</span>          
+          <span>Konto</span>
           <span>Soll/Haben</span>
           <span>Betrag (€)</span>
           <span />
@@ -208,17 +230,13 @@ export function JournalEntryForm({
               required
             >
               <option value="">– Konto wählen –</option>
-               
-                  {accounts?.map((a) => (
-                    <option key={a.account_id} value={a.account_id} title={accountLabel(a)}>
-                      {accountLabelShort(a)}
-                      {a.property_id != null ? " (eigen)" : ""}
-                    </option>
-                  ))}
-
+              {accounts?.map((a) => (
+                <option key={a.account_id} value={a.account_id} title={accountLabel(a)}>
+                  {accountLabelShort(a)}
+                  {a.property_id != null ? " (eigen)" : ""}
+                </option>
+              ))}
             </select>
-
-            
 
             <select
               value={line.direction}
@@ -265,42 +283,44 @@ export function JournalEntryForm({
         </div>
       </fieldset>
 
-      <fieldset className="journal-entry-form__attachment">
-        <legend>Beleg (optional)</legend>
-        <label>
-          Datei
-          <input type="file" onChange={handleAttachFileChange} />
-        </label>
-        {attachFile && (
-          <>
-            <label>
-              Titel
-              <input
-                value={attachTitle}
-                onChange={(e) => setAttachTitle(e.target.value)}
-                placeholder={description || "z.B. Rechnung Hausmeister März"}
-              />
-            </label>
-            <label>
-              Kategorie
-              <select
-                value={attachCategory}
-                onChange={(e) => setAttachCategory(e.target.value as DocumentCategory)}
-              >
-                {BELEG_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="journal-entry-form__attachment-hint">
-              Wird direkt nach dem Buchen als Beleg verknüpft (Sichtbarkeit: intern) – weitere Belege
-              lassen sich später über „Belege" bei der Buchung ergänzen.
-            </p>
-          </>
-        )}
-      </fieldset>
+      {!isEdit && (
+        <fieldset className="journal-entry-form__attachment">
+          <legend>Beleg (optional)</legend>
+          <label>
+            Datei
+            <input type="file" onChange={handleAttachFileChange} />
+          </label>
+          {attachFile && (
+            <>
+              <label>
+                Titel
+                <input
+                  value={attachTitle}
+                  onChange={(e) => setAttachTitle(e.target.value)}
+                  placeholder={description || "z.B. Rechnung Hausmeister März"}
+                />
+              </label>
+              <label>
+                Kategorie
+                <select
+                  value={attachCategory}
+                  onChange={(e) => setAttachCategory(e.target.value as DocumentCategory)}
+                >
+                  {BELEG_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="journal-entry-form__attachment-hint">
+                Wird direkt nach dem Buchen als Beleg verknüpft (Sichtbarkeit: intern) – weitere Belege
+                lassen sich später über „Belege" bei der Buchung ergänzen.
+              </p>
+            </>
+          )}
+        </fieldset>
+      )}
 
       {(validationError || error) && (
         <p className="journal-entry-form__error">{validationError ?? error}</p>
@@ -308,7 +328,7 @@ export function JournalEntryForm({
 
       <div className="journal-entry-form__actions">
         <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Wird gebucht…" : "Buchen"}
+          {isSubmitting ? (isEdit ? "Wird gespeichert…" : "Wird gebucht…") : (submitLabel ?? "Buchen")}
         </button>
         <button type="button" onClick={onCancel} disabled={isSubmitting}>
           Abbrechen

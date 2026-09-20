@@ -5,7 +5,9 @@ import {
   createJournalEntry,
   listJournalEntries,
   stornoJournalEntry,
+  updateJournalEntry,
   type JournalEntryPayload,
+  type JournalEntryUpdatePayload,
 } from "./api";
 
 const journalEntriesKey = (propertyId?: number) => ["journal-entries", propertyId ?? "all"];
@@ -22,6 +24,15 @@ export function useCreateJournalEntry(propertyId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: JournalEntryPayload) => createJournalEntry(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: journalEntriesKey(propertyId) }),
+  });
+}
+
+export function useUpdateJournalEntry(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entryId, payload }: { entryId: number; payload: JournalEntryUpdatePayload }) =>
+      updateJournalEntry(entryId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: journalEntriesKey(propertyId) }),
   });
 }

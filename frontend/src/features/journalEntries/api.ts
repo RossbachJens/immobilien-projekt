@@ -42,6 +42,11 @@ export interface JournalEntryPayload {
   lines: EntryLinePayload[];
 }
 
+// Wie JournalEntryPayload, aber ohne property_id - die Liegenschaft einer
+// bestehenden Buchung ändert sich beim Korrigieren nie (siehe
+// app/schemas/journal_entries.py::JournalEntryUpdate).
+export type JournalEntryUpdatePayload = Omit<JournalEntryPayload, "property_id">;
+
 export async function listJournalEntries(propertyId?: number): Promise<JournalEntry[]> {
   const { data } = await apiClient.get<JournalEntry[]>("/journal-entries", {
     params: propertyId ? { property_id: propertyId } : undefined,
@@ -51,6 +56,14 @@ export async function listJournalEntries(propertyId?: number): Promise<JournalEn
 
 export async function createJournalEntry(payload: JournalEntryPayload): Promise<JournalEntry> {
   const { data } = await apiClient.post<JournalEntry>("/journal-entries", payload);
+  return data;
+}
+
+export async function updateJournalEntry(
+  entryId: number,
+  payload: JournalEntryUpdatePayload,
+): Promise<JournalEntry> {
+  const { data } = await apiClient.patch<JournalEntry>(`/journal-entries/${entryId}`, payload);
   return data;
 }
 

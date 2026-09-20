@@ -3,18 +3,21 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
-# Ergänzung der Imports oben in der Datei:
 from datetime import date
-
 
 from app.core.access import accessible_property_ids
 from app.core.deps import get_current_user
 from app.core.roles import resolve_role
 from app.db.session import get_db
-from app.models.buchhaltung import Account, EntryLine, JournalEntry
+from app.models.abrechnung import SettlementPeriod
+from app.models.buchhaltung import Account, EntryDirection, EntryLine, JournalEntry
 from app.models.stammdaten import Property, User
-from app.schemas.journal_entries import EntryLineOut, JournalEntryCreate, JournalEntryOut
-from app.models.buchhaltung import EntryDirection
+from app.schemas.journal_entries import (
+    EntryLineOut,
+    JournalEntryCreate,
+    JournalEntryOut,
+    JournalEntryUpdate,
+)
 
 router = APIRouter(prefix="/journal-entries", tags=["journal-entries"])
 
@@ -74,6 +77,67 @@ def _get_readable_entry(db: Session, entry_id: int, current_user: User) -> Journ
 
 def _load_lines(db: Session, entry_id: int) -> list[EntryLine]:
     return list(db.scalars(select(EntryLine).where(EntryLine.entry_id == entry_id)))
+
+
+def _find_reversal_entry_id(db: Session, original_entry_id: int) -> int | None:
+    """Prüft, ob 'original_entry_id' bereits storniert wurde - liefert ggf.
+    die entry_id des existierenden Storno-Belegs (für die Fehlermeldung)."""
+    return db.scalar(
+        select(JournalEntry.entry_id).where(JournalEntry.reversed_entry_id == original_entry_id)
+    )
+
+
+def _find_locking_settlement_period(db: Session, entry: JournalEntry) -> SettlementPeriod | None:
+    """Eine Buchung gilt als gesperrt, sobald eine Nebenkostenabrechnung
+    (settlement_period) dieser Liegenschaft existiert, deren Zeitraum das
+    Buchungsdatum umschließt und die nicht mehr im Entwurf ist -
+    Editable-until-Beschluss-Prinzip, analog Wirtschaftsplan-/
+    Abrechnungspositionen (siehe app/routers/budget_plans.py bzw.
+    settlement_periods.py). Gibt es keine (oder nur eine noch offene)
+    Abrechnung für den Zeitraum, bleibt die Buchung bearbeitbar."""
+    return db.scalar(
+        select(SettlementPeriod).where(
+            SettlementPeriod.property_id == entry.property_id,
+            SettlementPeriod.deleted_at.is_(None),
+            SettlementPeriod.status != "Entwurf",
+            SettlementPeriod.period_start <= entry.entry_date,
+            SettlementPeriod.period_end >= entry.entry_date,
+        )
+    )
+
+
+def _require_editable(db: Session, entry: JournalEntry) -> None:
+    """Bearbeiten (PATCH) ist nur erlaubt, solange (1) keine Nebenkosten-
+    abrechnung den Buchungszeitraum bereits abgeschlossen hat, (2) die
+    Buchung nicht bereits storniert wurde, und (3) keine Zeile einen
+    Einheiten-/Vertragsbezug trägt - automatisiert erzeugte Buchungen
+    (Zahlungseingänge, Mietsollstellung) würden diesen Bezug sonst
+    verlieren, da das Korrektur-Formular unit_id/lease_id gar nicht erfasst
+    (Grundsatzentscheidung "Manuelle Buchungen sind ausschließlich
+    liegenschaftsbezogen", siehe PROJECTPLAN.md). Danach nur noch über
+    Storno korrigierbar."""
+    locking_period = _find_locking_settlement_period(db, entry)
+    if locking_period is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Buchung kann nicht mehr bearbeitet werden - die Nebenkostenabrechnung "
+            f"'{locking_period.title}' für diesen Zeitraum ist bereits {locking_period.status.lower()}. "
+            "Korrektur nur noch über Storno.",
+        )
+    if _find_reversal_entry_id(db, entry.entry_id) is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Buchung wurde bereits storniert und kann nicht mehr bearbeitet werden.",
+        )
+
+    existing_lines = _load_lines(db, entry.entry_id)
+    if any(line.unit_id is not None or line.lease_id is not None for line in existing_lines):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Automatisch erzeugte Buchungen mit Einheiten-/Vertragsbezug (z.B. Zahlungseingänge, "
+            "Mietsollstellung) können über diese Funktion nicht bearbeitet werden - bitte stornieren "
+            "und neu erfassen.",
+        )
 
 
 def _to_out(entry: JournalEntry, lines: list[EntryLine]) -> JournalEntryOut:
@@ -178,16 +242,62 @@ def create_journal_entry(
     db.refresh(entry)
     return _to_out(entry, _load_lines(db, entry.entry_id))
 
+
+@router.patch("/{entry_id}", response_model=JournalEntryOut)
+def update_journal_entry(
+    entry_id: int,
+    payload: JournalEntryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> JournalEntryOut:
+    """
+    Volle Korrektur einer bestehenden Buchung (Datum, Beschreibung,
+    Belegnummer, alle Zeilen) - siehe _require_editable() für die
+    Sperrbedingungen. Ersetzt alle Zeilen komplett statt sie einzeln zu
+    diffen (gleiches Muster wie bei Wirtschaftsplan-/Abrechnungspositionen,
+    z.B. update_settlement_position in settlement_periods.py) - die
+    entry_lines bekommen dabei neue line_id, was unproblematisch ist, da
+    nichts per Fremdschlüssel auf eine einzelne line_id verweist.
+    """
+    _require_write_role(current_user)
+    entry = _get_readable_entry(db, entry_id, current_user)
+    _require_editable(db, entry)
+    _validate_accounts_for_property(db, {line.account_id for line in payload.lines}, entry.property_id)
+
+    entry.entry_date = payload.entry_date
+    entry.document_reference = payload.document_reference
+    entry.description = payload.description
+
+    db.query(EntryLine).filter(EntryLine.entry_id == entry_id).delete()
+    db.add_all(
+        EntryLine(
+            entry_id=entry.entry_id,
+            account_id=line.account_id,
+            property_id=entry.property_id,
+            unit_id=line.unit_id,
+            lease_id=line.lease_id,
+            amount=line.amount,
+            direction=line.direction,
+        )
+        for line in payload.lines
+    )
+
+    try:
+        db.commit()
+    except (IntegrityError, DataError) as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Buchung ungültig: Soll und Haben sind nicht ausgeglichen (oder ein "
+            "verknüpfter Datensatz existiert nicht).",
+        ) from exc
+
+    db.refresh(entry)
+    return _to_out(entry, _load_lines(db, entry.entry_id))
+
+
 def _flip_direction(direction: EntryDirection) -> EntryDirection:
     return EntryDirection.credit if direction == EntryDirection.debit else EntryDirection.debit
-
-
-def _find_reversal_entry_id(db: Session, original_entry_id: int) -> int | None:
-    """Prüft, ob 'original_entry_id' bereits storniert wurde - liefert ggf.
-    die entry_id des existierenden Storno-Belegs (für die Fehlermeldung)."""
-    return db.scalar(
-        select(JournalEntry.entry_id).where(JournalEntry.reversed_entry_id == original_entry_id)
-    )
 
 
 @router.post("/{entry_id}/storno", response_model=JournalEntryOut, status_code=status.HTTP_201_CREATED)
@@ -199,8 +309,9 @@ def storno_journal_entry(
     """
     Bucht eine 1:1-Spiegelbuchung (Soll<->Haben vertauscht, gleiche Beträge)
     zur Original-Buchung 'entry_id'. Buchungsbelege werden in der doppelten
-    Buchführung nie verändert/gelöscht (siehe fehlendes PATCH/DELETE in
-    diesem Router) - Korrekturen laufen ausschließlich über Storno.
+    Buchführung nie verändert/gelöscht - Korrekturen laufen sonst
+    ausschließlich über Storno (siehe update_journal_entry oben für die
+    seit heute mögliche Ausnahme bis zur Nebenkostenabrechnung).
 
     Hinweis 'locked_at': Sperrung nach Monats-/Jahresabschluss wird hier noch
     NICHT geprüft (siehe PROJECTPLAN.md, Phase 7 "Härtung") - aktuell kann
