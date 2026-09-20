@@ -1,7 +1,7 @@
 # backend/app/schemas/properties.py
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class PropertyCreate(BaseModel):
@@ -23,8 +23,11 @@ class PropertyUpdate(BaseModel):
 
 
 class PropertyOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+    # Bewusst kein ConfigDict(from_attributes=True)/model_validate direkt aus
+    # dem ORM-Objekt - has_logo ist kein Attribut auf Property, sondern wird
+    # im Router explizit berechnet (siehe app/routers/properties.py::
+    # _to_property_out), damit Listenabfragen logo_content NICHT laden
+    # müssen (defer, analog documents.content).
     property_id: int
     name: str
     address: str
@@ -33,3 +36,4 @@ class PropertyOut(BaseModel):
     total_mea: float | None
     description: str | None
     created_at: datetime
+    has_logo: bool

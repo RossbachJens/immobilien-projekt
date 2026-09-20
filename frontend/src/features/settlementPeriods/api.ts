@@ -155,3 +155,10 @@ export async function exportUnitSettlementPdf(settlementId: number, unitId: numb
   });
   return data;
 }
+// frontend/src/features/settlementPeriods/api.ts — ergänzen
+export async function exportSettlementBatchPdf(settlementId: number): Promise<Blob> {
+  const { data } = await apiClient.get(`/settlement-periods/${settlementId}/export-batch`, {
+    responseType: "blob",
+  });
+  return data;
+}

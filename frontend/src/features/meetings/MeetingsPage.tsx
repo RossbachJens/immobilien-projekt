@@ -181,6 +181,10 @@ export function MeetingsPage() {
                     <button type="button" onClick={() => handleInvitation(m.meeting_id)}>
                       Einladung (PDF)
                     </button>
+                    // MeetingsPage.tsx — neben dem bestehenden "Einladung (PDF)"-Button
+                    <button type="button" onClick={() => handleInvitationBatch(m.meeting_id)}>
+                      Einladung Sammelversand (Post)
+                    </button>
                     <button type="button" onClick={() => handleMinutes(m.meeting_id)}>
                       Niederschrift (PDF)
                     </button>

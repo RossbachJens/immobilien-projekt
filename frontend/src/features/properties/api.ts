@@ -10,6 +10,7 @@ export interface Property {
   total_mea: number | null;
   description: string | null;
   created_at: string;
+  has_logo: boolean;
 }
 
 export interface PropertyPayload {
@@ -34,4 +35,19 @@ export async function createProperty(payload: PropertyPayload): Promise<Property
 export async function updateProperty(propertyId: number, payload: Partial<PropertyPayload>): Promise<Property> {
   const { data } = await apiClient.patch<Property>(`/properties/${propertyId}`, payload);
   return data;
+}
+
+export async function uploadPropertyLogo(propertyId: number, file: File): Promise<Property> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.put<Property>(`/properties/${propertyId}/logo`, formData);
+  return data;
+}
+
+export async function deletePropertyLogo(propertyId: number): Promise<void> {
+  await apiClient.delete(`/properties/${propertyId}/logo`);
+}
+
+export function propertyLogoUrl(propertyId: number): string {
+  return `${apiClient.defaults.baseURL}/properties/${propertyId}/logo`;
 }

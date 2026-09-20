@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card } from "../../components/Card";
 import type { PropertyPayload } from "./api";
 import { PropertyForm } from "./PropertyForm";
+import { PropertyLogoManager } from "./PropertyLogoManager";
 import { useCreateProperty, useProperties, useUpdateProperty } from "./useProperties";
 import "./PropertiesPage.css";
 
@@ -91,6 +92,7 @@ export function PropertiesPage() {
             isSubmitting={updatePropertyMutation.isPending}
             error={formError}
           />
+          <PropertyLogoManager propertyId={editingProperty.property_id} hasLogo={editingProperty.has_logo} />
         </Card>
       )}
     </div>

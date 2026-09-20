@@ -21,3 +21,8 @@ reportlab==4.2.5
 
 # backend/requirements.txt — ergänzen
 weasyprint==62.3  # PDF aus HTML/CSS - Version ggf. beim Build anpassen
+
+# backend/requirements.txt — ergänzen
+# Pillow: ReportLab braucht es, um PNG/JPEG-Logos in die Abrechnungs-PDFs
+# einzubetten (app/services/settlement_pdf.py, canvas.drawImage).
+Pillow==10.4.0

@@ -131,3 +131,11 @@ export async function downloadInvitation(meetingId: number): Promise<void> {
 export async function downloadMinutes(meetingId: number): Promise<void> {
   await downloadPdf(`/meetings/${meetingId}/minutes.pdf`, `Niederschrift_Versammlung_${meetingId}.pdf`);
 }
+
+// frontend/src/features/meetings/api.ts — ergänzen
+export async function downloadInvitationBatch(meetingId: number): Promise<void> {
+  await downloadPdf(
+    `/meetings/${meetingId}/invitation-batch.pdf`,
+    `Einladung_Versammlung_${meetingId}_Sammelversand.pdf`,
+  );
+}

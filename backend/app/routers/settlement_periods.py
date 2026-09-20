@@ -49,7 +49,9 @@ from app.services.settlement_pdf import (
     ReserveFundPdfData,
     ReserveFundPdfPosition,
     TaxCertificatePdfPosition,
+    UnitLetterInput,
     build_settlement_pdf,
+    build_settlement_pdf_batch,
 )
 
 router = APIRouter(prefix="/settlement-periods", tags=["settlement-periods"])
@@ -868,6 +870,89 @@ def export_unit_settlement_pdf(
     )
     
     filename = f"Abrechnung_{settlement.fiscal_year}_{unit.unit_number.replace(' ', '_')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{settlement_id}/export-batch")
+def export_settlement_batch_pdf(
+    settlement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Sammel-PDF für den Postversand: ein adressierter Brief je Einheit mit
+    aktuell zugeordnetem Eigentümer (DIN-5008-Anschriftfeld), alle in einem
+    Dokument - für den Druck-/Kuvertierlauf. Einheiten ohne Eigentümer
+    werden stillschweigend übersprungen (kein Empfänger zum Adressieren)."""
+    settlement = _get_readable_period(db, settlement_id, current_user)
+    property_ = db.get(Property, settlement.property_id)
+
+    units = list(
+        db.scalars(
+            select(Unit)
+            .where(Unit.property_id == settlement.property_id, Unit.deleted_at.is_(None))
+            .order_by(Unit.unit_number)
+        )
+    )
+
+    positions = list(
+        db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
+    )
+    position_ids = [p.position_id for p in positions]
+    accounts_by_position = _load_position_account_ids(db, position_ids)
+
+    all_shares = (
+        list(db.scalars(select(UnitSettlementShare).where(UnitSettlementShare.position_id.in_(position_ids))))
+        if position_ids
+        else []
+    )
+    shares_by_unit: dict[int, dict[int, UnitSettlementShare]] = {}
+    for s in all_shares:
+        shares_by_unit.setdefault(s.unit_id, {})[s.position_id] = s
+
+    summaries = list(
+        db.scalars(
+            select(UnitSettlementSummary).where(UnitSettlementSummary.settlement_id == settlement.settlement_id)
+        )
+    )
+    summary_by_unit = {s.unit_id: s for s in summaries}
+
+    resolution = db.get(ResolutionCollection, settlement.resolution_id) if settlement.resolution_id else None
+
+    letters: list[UnitLetterInput] = []
+    for unit in units:
+        owner = _get_current_owner(db, unit.unit_id)
+        if owner is None:
+            continue
+        reserve_fund_data = _build_reserve_fund_pdf_data(db, settlement, property_, unit.unit_id)
+        tax_certificate_positions = _build_tax_certificate_pdf_data(db, unit.unit_id, positions)
+        letters.append(
+            UnitLetterInput(
+                unit=unit,
+                owner=owner,
+                positions=positions,
+                accounts_by_position=accounts_by_position,
+                shares_by_position=shares_by_unit.get(unit.unit_id, {}),
+                summary=summary_by_unit.get(unit.unit_id),
+                reserve_fund=reserve_fund_data,
+                tax_certificate_positions=tax_certificate_positions,
+            )
+        )
+
+    if not letters:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Keine Einheit mit aktuell zugeordnetem Eigentümer gefunden - Sammelversand nicht möglich.",
+        )
+
+    pdf_bytes = build_settlement_pdf_batch(
+        settlement=settlement, property_=property_, resolution=resolution, letters=letters
+    )
+
+    filename = f"Abrechnungen_{settlement.fiscal_year}_Sammelversand.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",

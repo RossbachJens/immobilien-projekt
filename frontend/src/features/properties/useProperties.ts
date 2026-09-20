@@ -1,7 +1,14 @@
 // frontend/src/features/properties/useProperties.ts
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createProperty, listProperties, updateProperty, type PropertyPayload } from "./api";
+import {
+  createProperty,
+  deletePropertyLogo,
+  listProperties,
+  updateProperty,
+  uploadPropertyLogo,
+  type PropertyPayload,
+} from "./api";
 
 const PROPERTIES_KEY = ["properties"];
 
@@ -30,5 +37,21 @@ export function useUpdateProperty() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROPERTIES_KEY });
     },
+  });
+}
+
+export function useUploadPropertyLogo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ propertyId, file }: { propertyId: number; file: File }) => uploadPropertyLogo(propertyId, file),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROPERTIES_KEY }),
+  });
+}
+
+export function useDeletePropertyLogo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (propertyId: number) => deletePropertyLogo(propertyId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROPERTIES_KEY }),
   });
 }

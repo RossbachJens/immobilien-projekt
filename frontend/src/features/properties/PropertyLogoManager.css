@@ -1,0 +1,57 @@
+/* frontend/src/features/properties/PropertyLogoManager.css */
+.property-logo-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid #eee;
+}
+
+.property-logo-manager__label {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.property-logo-manager__preview {
+  max-width: 160px;
+  max-height: 80px;
+  width: auto;
+  object-fit: contain;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 0.25rem;
+  background: var(--color-white);
+}
+
+.property-logo-manager__empty {
+  color: #777;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.property-logo-manager__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.property-logo-manager__upload {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.property-logo-manager__actions button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.property-logo-manager__error {
+  color: var(--color-error);
+}

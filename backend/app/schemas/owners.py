@@ -1,10 +1,14 @@
 # backend/app/schemas/owners.py
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+Salutation = Literal["Herr", "Frau"]
+
 
 class OwnerCreate(BaseModel):
+    salutation: Salutation | None = None
     first_name: str | None = Field(default=None, max_length=50)
     last_name: str = Field(min_length=1, max_length=50)
     company_name: str | None = Field(default=None, max_length=100)
@@ -24,6 +28,7 @@ class OwnerCreate(BaseModel):
 
 
 class OwnerUpdate(BaseModel):
+    salutation: Salutation | None = None
     first_name: str | None = Field(default=None, max_length=50)
     last_name: str | None = Field(default=None, min_length=1, max_length=50)
     company_name: str | None = Field(default=None, max_length=100)
@@ -43,6 +48,7 @@ class OwnerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     owner_id: int
+    salutation: str | None
     first_name: str | None
     last_name: str
     company_name: str | None

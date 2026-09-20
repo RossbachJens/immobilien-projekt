@@ -122,7 +122,31 @@
   background-color: var(--color-light);
 }
 
-/* frontend/src/features/journalEntries/JournalEntryForm.css — ergänzen */
 .journal-entry-form__line select {
   min-width: 0; /* verhindert, dass lange Options die Grid-Spalte sprengen */
+}
+
+/* frontend/src/features/journalEntries/JournalEntryForm.css — ergänzt */
+.journal-entry-form__attachment {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 420px;
+}
+
+.journal-entry-form__attachment label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.journal-entry-form__attachment-hint {
+  color: #666;
+  font-style: italic;
+  font-size: 0.85rem;
+  margin: 0;
 }

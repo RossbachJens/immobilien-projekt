@@ -1,12 +1,15 @@
 # backend/app/services/settlement_pdf.py
 """
 Erzeugt die Einzelabrechnung (Jahresabrechnung je Einheit) als PDF - orientiert
-am Format der Muster-Datei "Einzelabrechnung 2024 Wohnung 4". Die Rücklagen-
-darstellung und Vermögensaufstellung ist seit Migration 0011 abgedeckt
-(optionaler Abschnitt, nur gerendert, wenn der Router Daten übergibt - siehe
-reserve_fund-Parameter). Die Bescheinigung i.S.d. § 35a EStG ist seit
-Migration 0012 abgedeckt (optionaler Abschnitt, siehe
-tax_certificate_positions-Parameter).
+am Format der Muster-Datei "Einzelabrechnung 2024 Wohnung 4". Seit dem
+Postversand-Feature trägt jeder Brief ein DIN-5008-Anschriftfeld an fester
+Position (siehe app/core/postal.py) statt der Empfängerdaten im normalen
+Textfluss - Technik: BaseDocTemplate mit einem onPage-Callback, der bei
+jedem Seitenbeginn die 'scharf geschaltete' Adresse zeichnet
+(Canvas-Koordinaten sind pro Seite neu, daher funktioniert das identisch für
+Einzelbrief und Sammel-PDF). Ein unsichtbares Flowable (_ArmAddress) setzt
+die jeweils nächste Adresse, bevor ein PageBreak() zum nächsten Empfänger
+führt.
 """
 from dataclasses import dataclass
 from datetime import date
@@ -17,12 +20,64 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    BaseDocTemplate,
+    Flowable,
+    Frame,
+    PageBreak,
+    PageTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
+from app.core.postal import (
+    DIN5008_CONTENT_TOP_MM,
+    DIN5008_LEFT_MM,
+    DIN5008_LINE_HEIGHT_MM,
+    DIN5008_RECIPIENT_OFFSET_MM,
+    DIN5008_SENDER_OFFSET_MM,
+    DIN5008_TOP_MM,
+    PostalAddress,
+    build_owner_postal_address,
+)
 from app.models.abrechnung import SettlementPeriod, SettlementPosition, UnitSettlementShare, UnitSettlementSummary
 from app.models.stammdaten import Owner, Property, Unit
 from app.models.wirtschaftsplan import ResolutionCollection
 
+LEFT_MARGIN_MM = 20.0
+RIGHT_MARGIN_MM = 20.0
+BOTTOM_MARGIN_MM = 18.0
+# Groß genug, um das DIN-5008-Anschriftfeld auf jeder Seite freizuhalten -
+# bewusst einheitlich für alle Seiten eines Briefs (auch Folgeseiten wie
+# §35a/Rücklagendarstellung), statt zwei unterschiedliche Seitenvorlagen zu
+# pflegen. Kostet etwas Weißraum auf Folgeseiten, hält den Code aber
+# deutlich einfacher.
+TOP_MARGIN_MM = DIN5008_CONTENT_TOP_MM
+
+_STYLES = getSampleStyleSheet()
+_HEADING_STYLE = ParagraphStyle("SettlementHeading", parent=_STYLES["Heading1"], fontSize=14, spaceAfter=6)
+_HEADING2_STYLE = _STYLES["Heading2"]
+_SMALL_STYLE = ParagraphStyle("SettlementSmall", parent=_STYLES["Normal"], fontSize=9, textColor=colors.grey)
+_BODY_STYLE = _STYLES["Normal"]
+# backend/app/services/settlement_pdf.py — Imports ergänzen
+from reportlab.lib.utils import ImageReader
+
+from app.core.postal import (
+    DIN5008_CONTENT_TOP_MM,
+    DIN5008_LEFT_MM,
+    DIN5008_LINE_HEIGHT_MM,
+    DIN5008_RECIPIENT_OFFSET_MM,
+    DIN5008_SENDER_OFFSET_MM,
+    DIN5008_TOP_MM,
+    LOGO_MAX_HEIGHT_MM,
+    LOGO_MAX_WIDTH_MM,
+    LOGO_RIGHT_MM,
+    LOGO_TOP_MM,
+    PostalAddress,
+    build_owner_postal_address,
+)
 
 @dataclass
 class ReserveFundPdfPosition:
@@ -40,8 +95,8 @@ class ReserveFundPdfPosition:
 @dataclass
 class ReserveFundPdfData:
     """Bündelt Rücklagendarstellung + Vermögensaufstellung für eine Einheit -
-    optionaler Parameter von build_settlement_pdf, da nicht jede Abrechnung
-    (noch) eine Rücklagendarstellung hat."""
+    optionaler Parameter, da nicht jede Abrechnung (noch) eine
+    Rücklagendarstellung hat."""
 
     reserve_balance_start: float
     reserve_balance_start_unit_share: float
@@ -54,11 +109,7 @@ class ReserveFundPdfData:
 
 @dataclass
 class TaxCertificatePdfPosition:
-    """Eine §35a-relevante Abrechnungsposition, für eine Einheit aufbereitet -
-    siehe app/routers/settlement_periods.py::_build_tax_certificate_pdf_data.
-    total_deductible_amount/unit_deductible_amount enthalten NUR den Lohn-/
-    Fahrt-/Maschinenkostenanteil (SettlementPosition.deductible_amount),
-    nicht die vollen Ist-Kosten der Position."""
+    """Eine §35a-relevante Abrechnungsposition, für eine Einheit aufbereitet."""
 
     description: str
     tax_category: str  # 'haushaltsnahe_dienstleistung' | 'handwerkerleistung'
@@ -66,6 +117,22 @@ class TaxCertificatePdfPosition:
     allocation_key_type: str
     total_deductible_amount: float
     unit_deductible_amount: float
+
+
+@dataclass
+class UnitLetterInput:
+    """Eingabedaten für EINEN Brief im Sammel-PDF (siehe
+    build_settlement_pdf_batch) - identisch zu den Einzelparametern von
+    build_settlement_pdf, nur gebündelt für die Schleife über alle Einheiten."""
+
+    unit: Unit
+    owner: Owner | None
+    positions: list[SettlementPosition]
+    accounts_by_position: dict[int, list[int]]
+    shares_by_position: dict[int, UnitSettlementShare]
+    summary: UnitSettlementSummary | None
+    reserve_fund: ReserveFundPdfData | None
+    tax_certificate_positions: list[TaxCertificatePdfPosition]
 
 
 def _de_number(value: float | Decimal) -> str:
@@ -84,12 +151,6 @@ def _german_date(d: date) -> str:
     return d.strftime("%d.%m.%Y")
 
 
-def _owner_display_name(owner: Owner) -> str:
-    if owner.company_name:
-        return owner.company_name
-    return f"{owner.first_name or ''} {owner.last_name}".strip()
-
-
 def _allocation_key_label(key_type: str) -> str:
     if key_type == "MEA":
         return "Miteigentumsanteile"
@@ -98,77 +159,169 @@ def _allocation_key_label(key_type: str) -> str:
     return key_type
 
 
-def build_settlement_pdf(
+# --------------------------------------------------------------------
+# DIN-5008-Anschriftfeld: Zeichenlogik + Seiten-Callback
+# --------------------------------------------------------------------
+
+def _draw_din5008_address(canv, page_height: float, address: PostalAddress) -> None:
+    canv.saveState()
+    left = DIN5008_LEFT_MM * mm
+    field_top = page_height - DIN5008_TOP_MM * mm
+
+    canv.setFont("Helvetica", 7)
+    sender_y = field_top - DIN5008_SENDER_OFFSET_MM * mm
+    canv.drawString(left, sender_y, address.sender_line)
+    canv.setLineWidth(0.3)
+    canv.line(left, sender_y - 1, left + 70 * mm, sender_y - 1)
+
+    canv.setFont("Helvetica", 10)
+    y = field_top - DIN5008_RECIPIENT_OFFSET_MM * mm
+    for line in address.recipient_lines:
+        if line:
+            canv.drawString(left, y, line)
+        y -= DIN5008_LINE_HEIGHT_MM * mm
+    canv.restoreState()
+
+def _draw_logo(canv, page_width: float, page_height: float, property_: Property) -> None:
+    if not property_.logo_content:
+        return
+    reader = ImageReader(BytesIO(property_.logo_content))
+    iw, ih = reader.getSize()
+    if not iw or not ih:
+        return
+    max_w, max_h = LOGO_MAX_WIDTH_MM * mm, LOGO_MAX_HEIGHT_MM * mm
+    scale = min(max_w / iw, max_h / ih, 1.0)  # nie über Originalgröße hinaus vergrößern
+    draw_w, draw_h = iw * scale, ih * scale
+    x = page_width - LOGO_RIGHT_MM * mm - draw_w
+    y = page_height - LOGO_TOP_MM * mm - draw_h
+    canv.drawImage(reader, x, y, width=draw_w, height=draw_h, mask="auto")
+    
+def _on_page(canv, doc_) -> None:
+    """Wird von reportlab bei JEDEM Seitenbeginn aufgerufen. Zeichnet Logo
+    und/oder Adresse nur, wenn sie über _ArmLetterStart für genau diese
+    Seite 'scharf geschaltet' wurden - Folgeseiten desselben Briefs (z.B.
+    §35a-Abschnitt) bleiben dadurch ohne Briefkopf."""
+    if getattr(doc_, "_pending_logo", False):
+        _draw_logo(canv, doc_.pagesize[0], doc_.pagesize[1], doc_._property)
+        doc_._pending_logo = False
+
+    address = getattr(doc_, "_pending_address", None)
+    if address is not None:
+        _draw_din5008_address(canv, doc_.pagesize[1], address)
+        doc_._pending_address = None
+
+
+class _ArmLetterStart(Flowable):
+    """Reines Seiteneffekt-Flowable ohne eigene Darstellung/Platzbedarf:
+    setzt auf dem Dokument-Objekt, dass beim NÄCHSTEN Seitenbeginn
+    (onPage-Callback, s.o.) Logo und - falls vorhanden - Adresse gezeichnet
+    werden sollen. So lässt sich im selben BaseDocTemplate pro Empfänger
+    ein neuer Briefkopf einsteuern, ohne mehrere Seitenvorlagen zu
+    brauchen."""
+
+    def __init__(self, doc_, address: PostalAddress | None) -> None:
+        super().__init__()
+        self._doc = doc_
+        self._address = address
+        self.width = 0
+        self.height = 0
+
+    def wrap(self, availWidth, availHeight):  # noqa: N803 - reportlab-Signatur
+        return (0, 0)
+
+    def draw(self) -> None:
+        self._doc._pending_address = self._address
+        self._doc._pending_logo = True
+
+
+def _render_letters(
+    pdf_title: str, entries: list[tuple[PostalAddress | None, list]], property_: Property
+) -> bytes:
+    """Baut EIN PDF aus mehreren Brief-Abschnitten (entries: Adresse +
+    Flowables je Empfänger). Ein Eintrag => Einzelbrief, mehrere => Sammel-
+    PDF für den Kuvertierlauf. 'property_' liefert das Logo (gleich für
+    alle Briefe dieses Exports)."""
+    buffer = BytesIO()
+    doc = BaseDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=LEFT_MARGIN_MM * mm,
+        rightMargin=RIGHT_MARGIN_MM * mm,
+        topMargin=TOP_MARGIN_MM * mm,
+        bottomMargin=BOTTOM_MARGIN_MM * mm,
+        title=pdf_title,
+    )
+    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="letter")
+    doc.addPageTemplates([PageTemplate(id="Letter", frames=[frame], onPage=_on_page)])
+
+    doc._property = property_
+    # Seite 1 startet, BEVOR das erste Flowable verarbeitet wird - Logo und
+    # Adresse des ersten Empfängers daher direkt am doc setzen statt über
+    # ein Flowable.
+    doc._pending_address = entries[0][0]
+    doc._pending_logo = True
+
+    story: list = []
+    for index, (address, flowables) in enumerate(entries):
+        if index > 0:
+            story.append(_ArmLetterStart(doc, address))
+            story.append(PageBreak())
+        story.extend(flowables)
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def _info_table(property_: Property, unit: Unit) -> Table:
+    """Objekt/Einheit-Block - wird sowohl im Kopf der Einzelabrechnung als
+    auch (falls vorhanden) am Anfang der Rücklagendarstellung/§35a-
+    Bescheinigung gezeigt. Baut jedes Mal ein frisches Table-Flowable, da
+    dasselbe Objekt nicht zweimal in einer reportlab-Story wiederverwendet
+    werden sollte."""
+    info_data = [
+        ["Objekt:", property_.name],
+        ["", property_.address],
+        ["Einheit:", unit.unit_number + (f" – {unit.floor}" if unit.floor else "")],
+    ]
+    table = Table(info_data, colWidths=[30 * mm, 120 * mm])
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    return table
+
+
+def _letter_flowables(
     *,
     settlement: SettlementPeriod,
     property_: Property,
     unit: Unit,
-    owner: Owner | None,
     positions: list[SettlementPosition],
     accounts_by_position: dict[int, list[int]],
     shares_by_position: dict[int, UnitSettlementShare],
     summary: UnitSettlementSummary | None,
     resolution: ResolutionCollection | None,
-    reserve_fund: ReserveFundPdfData | None = None,
-    tax_certificate_positions: list[TaxCertificatePdfPosition] | None = None,
-) -> bytes:
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=20 * mm,
-        rightMargin=20 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        title=f"Jahresabrechnung {settlement.fiscal_year} - {unit.unit_number}",
-    )
-
-    styles = getSampleStyleSheet()
-    heading = ParagraphStyle("SettlementHeading", parent=styles["Heading1"], fontSize=14, spaceAfter=6)
-    small = ParagraphStyle("SettlementSmall", parent=styles["Normal"], fontSize=9, textColor=colors.grey)
-    body = styles["Normal"]
-
-    def _info_table() -> Table:
-        """Objekt/Einheit-Block - wird sowohl im Kopf der Einzelabrechnung als
-        auch (falls vorhanden) am Anfang der Rücklagendarstellung/§35a-
-        Bescheinigung gezeigt. Baut jedes Mal ein frisches Table-Flowable,
-        da dasselbe Objekt nicht zweimal in einer reportlab-Story
-        wiederverwendet werden sollte."""
-        info_data = [
-            ["Objekt:", property_.name],
-            ["", property_.address],
-            ["Einheit:", unit.unit_number + (f" – {unit.floor}" if unit.floor else "")],
-        ]
-        table = Table(info_data, colWidths=[30 * mm, 120 * mm])
-        table.setStyle(
-            TableStyle(
-                [
-                    ("FONTSIZE", (0, 0), (-1, -1), 10),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-                ]
-            )
-        )
-        return table
-
-    story = []
-
-    # --- Absender/Empfänger-Block ---
-    if owner is not None:
-        story.append(Paragraph(_owner_display_name(owner), body))
-        story.append(Paragraph(owner.street_and_number, body))
-        story.append(Paragraph(f"{owner.postal_code or ''} {owner.city or ''}".strip(), body))
-        story.append(Spacer(1, 8 * mm))
+    reserve_fund: ReserveFundPdfData | None,
+    tax_certificate_positions: list[TaxCertificatePdfPosition] | None,
+) -> list:
+    """Baut die Flowables EINES Briefs (ohne Dokument-Setup/Adresse - die
+    Anschrift wird separat über das DIN-5008-Anschriftfeld gezeichnet, s.o.)."""
+    story: list = []
 
     story.append(
         Paragraph(
             f"Jahresabrechnung für Ihre Eigentumseinheit vom "
             f"{_german_date(settlement.period_start)} bis {_german_date(settlement.period_end)}",
-            heading,
+            _HEADING_STYLE,
         )
     )
 
-    story.append(_info_table())
+    story.append(_info_table(property_, unit))
     story.append(Spacer(1, 6 * mm))
 
     # --- Zusammenfassung ---
@@ -202,7 +355,7 @@ def build_settlement_pdf(
             Paragraph(
                 f"Die Abrechnungsspitze wurde durch Beschluss vom {_german_date(resolution.resolution_date)} "
                 f"(Lfd. Nr. {resolution.lfd_nr}) fällig gestellt.",
-                small,
+                _SMALL_STYLE,
             )
         )
     else:
@@ -210,13 +363,13 @@ def build_settlement_pdf(
             Paragraph(
                 "Diese Abrechnung ist noch nicht beschlossen - die Abrechnungsspitze wird erst mit "
                 "Beschlussfassung über die Jahresabrechnung fällig.",
-                small,
+                _SMALL_STYLE,
             )
         )
     story.append(Spacer(1, 8 * mm))
 
     # --- Einzelabrechnung: Positionen ---
-    story.append(Paragraph("Einzelabrechnung", styles["Heading2"]))
+    story.append(Paragraph("Einzelabrechnung", _HEADING2_STYLE))
 
     rows = [["Kostenart", "Verteilerschlüssel", "Gesamtbetrag", "Ihr Anteil"]]
     for position in positions:
@@ -256,10 +409,10 @@ def build_settlement_pdf(
             Paragraph(
                 f"Bescheinigung i.S.d. § 35a EStG für die Abrechnung<br/>"
                 f"{_german_date(settlement.period_start)} - {_german_date(settlement.period_end)}",
-                heading,
+                _HEADING_STYLE,
             )
         )
-        story.append(_info_table())
+        story.append(_info_table(property_, unit))
         story.append(Spacer(1, 4 * mm))
 
         total_mea = property_.total_mea
@@ -272,7 +425,7 @@ def build_settlement_pdf(
         category_marker = {"haushaltsnahe_dienstleistung": "2", "handwerkerleistung": "3"}
 
         def _tax_table(positions_subset: list[TaxCertificatePdfPosition]) -> Table:
-            rows = [
+            rows_ = [
                 ["", "", "Verteilungsrelevante\nBeträge", "Verteilungs-\nschlüssel", "Gesamt-\nverteiler", "Ihr\nAnteil", "Ihr\nBetrag"]
             ]
             total_gesamt = 0.0
@@ -282,7 +435,7 @@ def build_settlement_pdf(
                     row_gesamt, row_ihr = gesamt_mea_display, ihr_mea_display
                 else:
                     row_gesamt, row_ihr = "–", "–"
-                rows.append(
+                rows_.append(
                     [
                         category_marker.get(p.tax_category, ""),
                         p.description,
@@ -295,9 +448,9 @@ def build_settlement_pdf(
                 )
                 total_gesamt += p.total_deductible_amount
                 total_ihr += p.unit_deductible_amount
-            rows.append(["", "Gesamt", _eur(total_gesamt), "", "", "", _eur(total_ihr)])
+            rows_.append(["", "Gesamt", _eur(total_gesamt), "", "", "", _eur(total_ihr)])
 
-            table = Table(rows, colWidths=[7 * mm, 43 * mm, 25 * mm, 24 * mm, 18 * mm, 15 * mm, 20 * mm])
+            table = Table(rows_, colWidths=[7 * mm, 43 * mm, 25 * mm, 24 * mm, 18 * mm, 15 * mm, 20 * mm])
             table.setStyle(
                 TableStyle(
                     [
@@ -319,13 +472,13 @@ def build_settlement_pdf(
         non_apportionable = [p for p in tax_certificate_positions if not p.is_apportionable]
 
         if apportionable:
-            story.append(Paragraph("Umlagefähige haushaltsnahe Dienstleistungen/Handwerkerleistungen", styles["Heading2"]))
+            story.append(Paragraph("Umlagefähige haushaltsnahe Dienstleistungen/Handwerkerleistungen", _HEADING2_STYLE))
             story.append(_tax_table(apportionable))
             story.append(Spacer(1, 4 * mm))
 
         if non_apportionable:
             story.append(
-                Paragraph("Nicht umlagefähige haushaltsnahe Dienstleistungen/Handwerkerleistungen", styles["Heading2"])
+                Paragraph("Nicht umlagefähige haushaltsnahe Dienstleistungen/Handwerkerleistungen", _HEADING2_STYLE)
             )
             story.append(_tax_table(non_apportionable))
             story.append(Spacer(1, 4 * mm))
@@ -337,7 +490,7 @@ def build_settlement_pdf(
                 "Bescheinigt wird ausschließlich der Lohn-, Fahrt- und Maschinenkostenanteil - "
                 "Materialkosten sind nach § 35a EStG nicht begünstigt und in den ausgewiesenen "
                 "Beträgen nicht enthalten.",
-                small,
+                _SMALL_STYLE,
             )
         )
 
@@ -348,10 +501,10 @@ def build_settlement_pdf(
             Paragraph(
                 "Rücklagendarstellung und Vermögensaufstellung<br/>"
                 f"{_german_date(settlement.period_start)} - {_german_date(settlement.period_end)}",
-                heading,
+                _HEADING_STYLE,
             )
         )
-        story.append(_info_table())
+        story.append(_info_table(property_, unit))
         story.append(Spacer(1, 6 * mm))
 
         total_mea = property_.total_mea
@@ -426,12 +579,12 @@ def build_settlement_pdf(
         story.append(reserve_table)
         story.append(Spacer(1, 8 * mm))
 
-        story.append(Paragraph("Vermögensaufstellung", styles["Heading2"]))
+        story.append(Paragraph("Vermögensaufstellung", _HEADING2_STYLE))
         story.append(
             Paragraph(
                 "Bewirtschaftungskonto(en) - Salden nicht auf Einheiten verteilt, nur Gesamtsumme "
                 "der Liegenschaft.",
-                small,
+                _SMALL_STYLE,
             )
         )
         story.append(Spacer(1, 2 * mm))
@@ -453,5 +606,76 @@ def build_settlement_pdf(
         )
         story.append(asset_table)
 
-    doc.build(story)
-    return buffer.getvalue()
+    return story
+
+
+def build_settlement_pdf(
+    *,
+    settlement: SettlementPeriod,
+    property_: Property,
+    unit: Unit,
+    owner: Owner | None,
+    positions: list[SettlementPosition],
+    accounts_by_position: dict[int, list[int]],
+    shares_by_position: dict[int, UnitSettlementShare],
+    summary: UnitSettlementSummary | None,
+    resolution: ResolutionCollection | None,
+    reserve_fund: ReserveFundPdfData | None = None,
+    tax_certificate_positions: list[TaxCertificatePdfPosition] | None = None,
+) -> bytes:
+    """Einzelexport - ein adressierter Brief für eine Einheit/einen
+    Eigentümer. Gleiche Signatur wie vor dem DIN-5008-Umbau - Aufrufer
+    (app/routers/settlement_periods.py) bleiben unverändert."""
+    postal_address = build_owner_postal_address(property_, owner) if owner is not None else None
+    flowables = _letter_flowables(
+        settlement=settlement,
+        property_=property_,
+        unit=unit,
+        positions=positions,
+        accounts_by_position=accounts_by_position,
+        shares_by_position=shares_by_position,
+        summary=summary,
+        resolution=resolution,
+        reserve_fund=reserve_fund,
+        tax_certificate_positions=tax_certificate_positions,
+    )
+    return _render_letters(
+        f"Jahresabrechnung {settlement.fiscal_year} - {unit.unit_number}", [(postal_address, flowables)], property_
+    )
+
+
+def build_settlement_pdf_batch(
+    *,
+    settlement: SettlementPeriod,
+    property_: Property,
+    resolution: ResolutionCollection | None,
+    letters: list[UnitLetterInput],
+) -> bytes:
+    """Sammelexport - ein PDF mit einem adressierten Brief je Einheit
+    (eigene Seite(n), eigenes DIN-5008-Anschriftfeld), für den Druck-/
+    Kuvertierlauf. Einheiten ohne aktuell zugeordneten Eigentümer werden
+    stillschweigend übersprungen - ein Postversand ohne Empfänger ist nicht
+    sinnvoll."""
+    entries = []
+    for item in letters:
+        if item.owner is None:
+            continue
+        postal_address = build_owner_postal_address(property_, item.owner)
+        flowables = _letter_flowables(
+            settlement=settlement,
+            property_=property_,
+            unit=item.unit,
+            positions=item.positions,
+            accounts_by_position=item.accounts_by_position,
+            shares_by_position=item.shares_by_position,
+            summary=item.summary,
+            resolution=resolution,
+            reserve_fund=item.reserve_fund,
+            tax_certificate_positions=item.tax_certificate_positions,
+        )
+        entries.append((postal_address, flowables))
+
+    if not entries:
+        raise ValueError("Keine Einheit mit zugeordnetem Eigentümer für den Sammelversand gefunden.")
+
+    return _render_letters(f"Jahresabrechnungen {settlement.fiscal_year} - Sammelversand", entries, property_)

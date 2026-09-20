@@ -18,6 +18,11 @@ class Property(Base):
     construction_year: Mapped[int | None]
     total_mea: Mapped[float | None] = mapped_column(Numeric(10, 2))
     description: Mapped[str | None] = mapped_column(Text)
+    # Verwalter-Logo für den Seitenkopf generierter PDFs (Abrechnung,
+    # Einladung, Niederschrift) - siehe app/core/postal.py und
+    # app/routers/properties.py::upload_property_logo. NULL = kein Logo.
+    logo_content: Mapped[bytes | None] = mapped_column(LargeBinary)
+    logo_mime_type: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
@@ -50,6 +55,9 @@ class Owner(Base):
     owner_id: Mapped[int] = mapped_column(primary_key=True)
     first_name: Mapped[str | None] = mapped_column(String(50))
     last_name: Mapped[str] = mapped_column(String(50))
+    # Für den DIN-5008-Adressblock beim Postversand (Einladung/Abrechnung,
+    # siehe app/core/postal.py) - NULL = keine Anrede (Firma oder ungepflegt).
+    salutation: Mapped[str | None] = mapped_column(String(10))
     company_name: Mapped[str | None] = mapped_column(String(100))
     email: Mapped[str | None] = mapped_column(String(100))
     phone: Mapped[str | None] = mapped_column(String(50))

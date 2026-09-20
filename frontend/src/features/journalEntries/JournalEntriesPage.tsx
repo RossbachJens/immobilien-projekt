@@ -7,13 +7,14 @@ import { AccountLedgerPanel } from "../accounts/AccountLedgerPanel";
 import { accountLabel } from "../accounts/format";
 import { PropertyAccountsManager } from "../accounts/PropertyAccountsManager";
 import { useAccounts } from "../accounts/useAccounts";
+import { useUploadDocument } from "../documents/useDocuments";
 import type { PaymentPayload } from "../payments/api";
 import { PaymentForm } from "../payments/PaymentForm";
 import { useCreatePayment } from "../payments/usePayments";
 import { useUnits } from "../units/useUnits";
 import type { JournalEntryPayload } from "./api";
 import { JournalEntryDocuments } from "./JournalEntryDocuments";
-import { JournalEntryForm } from "./JournalEntryForm";
+import { JournalEntryForm, type JournalEntryBelegDraft } from "./JournalEntryForm";
 import { useCreateJournalEntry, useJournalEntries, useStornoJournalEntry } from "./useJournalEntries";
 import "./JournalEntriesPage.css";
 
@@ -29,6 +30,7 @@ export function JournalEntriesPage() {
   const createMutation = useCreateJournalEntry(propertyId ?? -1);
   const stornoMutation = useStornoJournalEntry(propertyId ?? -1);
   const createPaymentMutation = useCreatePayment(propertyId ?? -1);
+  const uploadDocumentMutation = useUploadDocument();
 
   const [tab, setTab] = useState<Tab>("buchungen");
   const [mode, setMode] = useState<"idle" | "creating" | "recording-payment">("idle");
@@ -42,10 +44,37 @@ export function JournalEntriesPage() {
     return unit ? unit.unit_number : `#${unitId}`;
   }
 
-  function handleCreate(payload: JournalEntryPayload) {
+  function handleCreate(payload: JournalEntryPayload, beleg?: JournalEntryBelegDraft) {
+    if (propertyId == null) return;
     setFormError(null);
     createMutation.mutate(payload, {
-      onSuccess: () => setMode("idle"),
+      onSuccess: (entry) => {
+        setMode("idle");
+        // Beleg-Upload läuft bewusst NACH dem Buchen als zweiter Request -
+        // ein Dokument kann erst verknüpft werden, wenn die Buchung (und
+        // damit entry_id) existiert. Schlägt nur dieser zweite Schritt fehl,
+        // bleibt die Buchung trotzdem bestehen (kein Rollback) - deshalb ein
+        // eigener, expliziter Fehlerhinweis statt formError, damit klar
+        // wird, dass die Buchung sehr wohl angelegt wurde.
+        if (beleg) {
+          uploadDocumentMutation.mutate(
+            {
+              property_id: propertyId,
+              category: beleg.category,
+              title: beleg.title,
+              visibility: "intern",
+              journal_entry_id: entry.entry_id,
+              file: beleg.file,
+            },
+            {
+              onError: () =>
+                window.alert(
+                  "Buchung wurde angelegt, aber der Beleg konnte nicht hochgeladen werden - bitte nachträglich über „Belege\" bei der Buchung ergänzen.",
+                ),
+            },
+          );
+        }
+      },
       onError: () =>
         setFormError("Buchung konnte nicht gespeichert werden - Soll und Haben eventuell nicht ausgeglichen."),
     });

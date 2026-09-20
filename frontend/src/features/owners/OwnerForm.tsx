@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
-import type { Owner, OwnerPayload } from "./api";
+import type { Owner, OwnerPayload, Salutation } from "./api";
 import "./OwnerForm.css";
 
 interface OwnerFormProps {
@@ -15,6 +15,7 @@ interface OwnerFormProps {
 }
 
 export function OwnerForm({ initialValues, submitLabel, onSubmit, onCancel, isSubmitting, error }: OwnerFormProps) {
+  const [salutation, setSalutation] = useState<Salutation | "">(initialValues?.salutation ?? "");
   const [firstName, setFirstName] = useState(initialValues?.first_name ?? "");
   const [lastName, setLastName] = useState(initialValues?.last_name ?? "");
   const [companyName, setCompanyName] = useState(initialValues?.company_name ?? "");
@@ -36,6 +37,7 @@ export function OwnerForm({ initialValues, submitLabel, onSubmit, onCancel, isSu
     event.preventDefault();
 
     const payload: OwnerPayload = {
+      salutation: salutation || null,
       first_name: firstName || null,
       last_name: lastName,
       company_name: companyName || null,
@@ -65,6 +67,14 @@ export function OwnerForm({ initialValues, submitLabel, onSubmit, onCancel, isSu
 
   return (
     <form onSubmit={handleSubmit} className="owner-form">
+      <label>
+        Anrede
+        <select value={salutation} onChange={(e) => setSalutation(e.target.value as Salutation | "")}>
+          <option value="">– keine Angabe –</option>
+          <option value="Herr">Herr</option>
+          <option value="Frau">Frau</option>
+        </select>
+      </label>
       <label>
         Vorname
         <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />

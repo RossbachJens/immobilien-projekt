@@ -12,6 +12,7 @@ import {
   recalculateSettlement,
   updateSettlementPeriod,
   updateSettlementPosition,
+  exportSettlementBatchPdf,
   type SettlementPeriodPayload,
   type SettlementPositionPayload,
   type SettlementPositionUpdatePayload,
@@ -120,6 +121,22 @@ export function useExportUnitSettlement() {
       filename: string;
     }) => {
       const blob = await exportUnitSettlementPdf(settlementId, unitId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+}
+
+// frontend/src/features/settlementPeriods/useSettlementPeriods.ts — Import von
+// "exportSettlementBatchPdf" ergänzen und diesen Hook hinzufügen
+export function useExportSettlementBatch() {
+  return useMutation({
+    mutationFn: async ({ settlementId, filename }: { settlementId: number; filename: string }) => {
+      const blob = await exportSettlementBatchPdf(settlementId);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

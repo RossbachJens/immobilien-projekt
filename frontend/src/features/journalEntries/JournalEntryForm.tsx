@@ -1,14 +1,37 @@
 // frontend/src/features/journalEntries/JournalEntryForm.tsx
 import { useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 
 import type { AccountType } from "../accounts/api";
 import { useAccounts } from "../accounts/useAccounts";
+import type { DocumentCategory } from "../documents/api";
 
 import type { EntryDirection, JournalEntryPayload } from "./api";
 import "./JournalEntryForm.css";
-// frontend/src/features/journalEntries/JournalEntryForm.tsx — Import ergänzen
 import { accountLabel, accountLabelShort } from "../accounts/format";
+
+// Dieselbe Liste wie in features/documents/DocumentUploadForm.tsx - bewusst
+// lokal dupliziert statt zentralisiert (gleiches Muster wie z.B.
+// _require_write_role im Backend, siehe mehrere Router).
+const BELEG_CATEGORIES: DocumentCategory[] = [
+  "Kontoauszug",
+  "Rechnung",
+  "Angebot",
+  "Versicherung",
+  "Vertrag",
+  "Protokoll",
+  "Sonstiges",
+];
+
+// Vom Formular an den Aufrufer gereicht, falls eine Datei ausgewählt wurde -
+// die eigentliche Verknüpfung (journal_entry_id) kann erst NACH dem Anlegen
+// der Buchung erfolgen (siehe JournalEntriesPage.tsx::handleCreate), da das
+// Dokument-Schema eine bereits existierende Buchung voraussetzt.
+export interface JournalEntryBelegDraft {
+  file: File;
+  title: string;
+  category: DocumentCategory;
+}
 
 interface FormLine {
   key: string;
@@ -23,7 +46,7 @@ function todayIso(): string {
 
 interface JournalEntryFormProps {
   propertyId: number;
-  onSubmit: (payload: JournalEntryPayload) => void;
+  onSubmit: (payload: JournalEntryPayload, beleg?: JournalEntryBelegDraft) => void;
   onCancel: () => void;
   isSubmitting: boolean;
   error?: string | null;
@@ -60,6 +83,10 @@ export function JournalEntryForm({
   const [lines, setLines] = useState<FormLine[]>(() => [makeLine("DEBIT"), makeLine("CREDIT")]);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [attachTitle, setAttachTitle] = useState("");
+  const [attachCategory, setAttachCategory] = useState<DocumentCategory>("Rechnung");
+
   function updateLine(key: string, patch: Partial<FormLine>) {
     setLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...patch } : line)));
   }
@@ -70,6 +97,10 @@ export function JournalEntryForm({
 
   function removeLine(key: string) {
     setLines((prev) => (prev.length <= 2 ? prev : prev.filter((line) => line.key !== key)));
+  }
+
+  function handleAttachFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setAttachFile(event.target.files?.[0] ?? null);
   }
 
   // Nur eine Vorschau für den User - die verbindliche Prüfung übernimmt der
@@ -97,7 +128,7 @@ export function JournalEntryForm({
       return;
     }
 
-    onSubmit({
+    const payload: JournalEntryPayload = {
       property_id: propertyId,
       entry_date: entryDate,
       document_reference: documentReference || null,
@@ -107,7 +138,13 @@ export function JournalEntryForm({
         direction: l.direction,
         amount: Number(l.amount),
       })),
-    });
+    };
+
+    const beleg: JournalEntryBelegDraft | undefined = attachFile
+      ? { file: attachFile, title: attachTitle || description || "Beleg", category: attachCategory }
+      : undefined;
+
+    onSubmit(payload, beleg);
   }
 
   return (
@@ -226,6 +263,43 @@ export function JournalEntryForm({
           Soll: {debitSum.toFixed(2)} € · Haben: {creditSum.toFixed(2)} €
           {difference !== 0 && <> · Differenz: {difference.toFixed(2)} €</>}
         </div>
+      </fieldset>
+
+      <fieldset className="journal-entry-form__attachment">
+        <legend>Beleg (optional)</legend>
+        <label>
+          Datei
+          <input type="file" onChange={handleAttachFileChange} />
+        </label>
+        {attachFile && (
+          <>
+            <label>
+              Titel
+              <input
+                value={attachTitle}
+                onChange={(e) => setAttachTitle(e.target.value)}
+                placeholder={description || "z.B. Rechnung Hausmeister März"}
+              />
+            </label>
+            <label>
+              Kategorie
+              <select
+                value={attachCategory}
+                onChange={(e) => setAttachCategory(e.target.value as DocumentCategory)}
+              >
+                {BELEG_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="journal-entry-form__attachment-hint">
+              Wird direkt nach dem Buchen als Beleg verknüpft (Sichtbarkeit: intern) – weitere Belege
+              lassen sich später über „Belege" bei der Buchung ergänzen.
+            </p>
+          </>
+        )}
       </fieldset>
 
       {(validationError || error) && (

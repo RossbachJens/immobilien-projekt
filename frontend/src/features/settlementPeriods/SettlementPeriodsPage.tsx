@@ -272,6 +272,7 @@ function SettlementPeriodDetails({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const exportBatchMutation = useExportSettlementBatch();
 
   function handleCreate(payload: SettlementPositionPayload) {
     setFormError(null);
@@ -438,7 +439,18 @@ function SettlementPeriodDetails({
           error={formError}
         />
       )}
-
+      <button
+  type="button"
+  onClick={() =>
+    exportBatchMutation.mutate({
+      settlementId,
+      filename: `Abrechnungen_${fiscalYear}_Sammelversand.pdf`,
+    })
+  }
+  disabled={exportBatchMutation.isPending}
+>
+  {exportBatchMutation.isPending ? "Wird erstellt…" : "Alle als Sammel-PDF (Post)"}
+</button>
       <h4 className="settlement-period-details__summaries-heading">Ergebnis je Einheit</h4>
       {summariesLoading && <p>Lädt…</p>}
       {!summariesLoading && summaries?.length === 0 && (

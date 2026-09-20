@@ -1,8 +1,11 @@
 // frontend/src/features/owners/api.ts
 import { apiClient } from "../../api/client";
 
+export type Salutation = "Herr" | "Frau";
+
 export interface Owner {
   owner_id: number;
+  salutation: Salutation | null;
   first_name: string | null;
   last_name: string;
   company_name: string | null;
@@ -23,6 +26,7 @@ export interface Owner {
 export type OwnerOption = Pick<Owner, "owner_id" | "first_name" | "last_name" | "company_name">;
 
 export interface OwnerPayload {
+  salutation?: Salutation | null;
   first_name?: string | null;
   last_name: string;
   company_name?: string | null;

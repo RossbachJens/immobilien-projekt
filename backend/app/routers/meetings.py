@@ -11,10 +11,13 @@ from weasyprint import HTML
 
 from app.core.access import accessible_property_ids
 from app.core.deps import get_current_user
+# backend/app/routers/meetings.py — Import ersetzen
+from app.core.postal import LOGO_CSS_BOX, PostalAddress, build_owner_postal_address, greeting_for_owner, logo_data_uri
 from app.core.roles import resolve_role
 from app.db.session import get_db
 from app.models.meetings import MeetingAgendaItem, OwnerMeeting
-from app.models.stammdaten import Property, User
+from app.models.stammdaten import Owner, Property, Unit, User
+from app.models.zuordnungen import UnitOwnerHistory
 from app.schemas.meetings import (
     AgendaItemCreate,
     AgendaItemOut,
@@ -67,6 +70,28 @@ def _load_agenda_items(db: Session, meeting_id: int) -> list[MeetingAgendaItem]:
             select(MeetingAgendaItem)
             .where(MeetingAgendaItem.meeting_id == meeting_id)
             .order_by(MeetingAgendaItem.position)
+        )
+    )
+
+
+def _current_property_owners(db: Session, property_id: int) -> list[Owner]:
+    """Aktuell zugeordnete Eigentümer der Liegenschaft, dedupliziert (ein
+    Eigentümer mit mehreren Einheiten bekommt nur EINE Einladung)."""
+    owner_ids = list(
+        db.scalars(
+            select(UnitOwnerHistory.owner_id)
+            .join(Unit, Unit.unit_id == UnitOwnerHistory.unit_id)
+            .where(Unit.property_id == property_id, UnitOwnerHistory.valid_to.is_(None))
+            .distinct()
+        )
+    )
+    if not owner_ids:
+        return []
+    return list(
+        db.scalars(
+            select(Owner)
+            .where(Owner.owner_id.in_(owner_ids), Owner.deleted_at.is_(None))
+            .order_by(Owner.last_name)
         )
     )
 
@@ -218,12 +243,15 @@ def delete_agenda_item(
     db.commit()
 
 
+# backend/app/routers/meetings.py — INVITATION_TEMPLATE ersetzen
 INVITATION_TEMPLATE = """
 <html>
 <head>
 <meta charset="utf-8">
 <style>
   body {{ font-family: 'DejaVu Sans', sans-serif; font-size: 11pt; color: #222; }}
+  .letterhead {{ position: relative; min-height: 35mm; }}
+  .letterhead .logo {{ position: absolute; {logo_css_box} }}
   .header {{ margin-bottom: 2cm; }}
   h1 {{ font-size: 14pt; }}
   ol {{ padding-left: 1.2cm; }}
@@ -232,6 +260,7 @@ INVITATION_TEMPLATE = """
 </style>
 </head>
 <body>
+  {letterhead_html}
   <div class="header">{property_name}<br>{property_address}</div>
   <h1>Einladung zur {meeting_type}</h1>
   <p>Sehr geehrte Damen und Herren,</p>
@@ -244,12 +273,114 @@ INVITATION_TEMPLATE = """
 """
 
 
+# --------------------------------------------------------------------
+# DIN-5008-Einladung: gemeinsame Vorlage für Einzel- und Sammel-PDF.
+# Jeder Empfänger bekommt einen eigenen Seiten-Block mit fixem
+# Anschriftfeld (position:absolute, gemessen ab wirklichem Blattrand -
+# .din5008-page selbst trägt daher KEIN Padding, das Innere
+# ('.din5008-content') hat sein eigenes).
+# --------------------------------------------------------------------
+# backend/app/routers/meetings.py — DIN5008_STYLE ersetzen (nur die letzte Zeile vor
+# .din5008-content geändert + %-Substitution)
+DIN5008_STYLE = (
+    """
+@page { size: A4; margin: 0; }
+body { margin: 0; font-family: 'DejaVu Sans', sans-serif; font-size: 11pt; color: #222; }
+.din5008-page {
+  position: relative;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+}
+.din5008-page + .din5008-page { break-before: page; }
+.din5008-address {
+  position: absolute;
+  top: 45mm;
+  left: 20mm;
+  width: 85mm;
+  height: 45mm;
+}
+.din5008-address .sender-line {
+  font-size: 7pt;
+  display: inline-block;
+  border-bottom: 0.5pt solid #000;
+  padding-bottom: 1mm;
+  margin-bottom: 3mm;
+}
+.din5008-address .recipient-line { font-size: 10pt; line-height: 1.5; }
+.din5008-logo { position: absolute; %s }
+.din5008-content { padding: 95mm 20mm 18mm 20mm; }
+.din5008-content h1 { font-size: 14pt; }
+.din5008-content ol { padding-left: 1.2cm; }
+.din5008-content li { margin-bottom: 0.4cm; }
+.din5008-content .description { font-size: 10pt; color: #444; margin-top: 0.1cm; }
+"""
+    % LOGO_CSS_BOX
+)
+
+
+def _render_invitation_letters(
+    meeting: OwnerMeeting,
+    agenda_items: list[MeetingAgendaItem],
+    addressees: list[tuple[PostalAddress, str]],
+    property_: Property,
+) -> str:
+    is_circular = meeting.meeting_type == "Umlaufbeschluss"
+    meeting_date_line = (
+        f"Frist zur Stimmabgabe bis {meeting.meeting_date.strftime('%d.%m.%Y')}"
+        if is_circular
+        else meeting.meeting_date.strftime("%d.%m.%Y")
+        + (f", {meeting.meeting_time.strftime('%H:%M')} Uhr" if meeting.meeting_time else "")
+    )
+    location_detail_line = "" if is_circular else f"<strong>Ort:</strong> {meeting.location or '–'}"
+
+    agenda_html = "".join(
+        f"<li>{item.title}"
+        + (f'<div class="description">{item.description}</div>' if item.description else "")
+        + "</li>"
+        for item in agenda_items
+    )
+
+    logo_uri = logo_data_uri(property_)
+    logo_html = f'<img class="din5008-logo" src="{logo_uri}">' if logo_uri else ""
+
+    pages = []
+    for postal_address, greeting in addressees:
+        recipient_html = "".join(
+            f'<div class="recipient-line">{line}</div>' for line in postal_address.recipient_lines if line
+        )
+        pages.append(
+            f"""
+            <div class="din5008-page">
+              {logo_html}
+              <div class="din5008-address">
+                <div class="sender-line">{postal_address.sender_line}</div>
+                {recipient_html}
+              </div>
+              <div class="din5008-content">
+                <h1>Einladung zur {meeting.meeting_type}</h1>
+                <p>{greeting}</p>
+                <p>{meeting.agenda_intro or "hiermit laden wir Sie herzlich ein."}</p>
+                <p><strong>Termin:</strong> {meeting_date_line}<br>{location_detail_line}</p>
+                <h2>Tagesordnung</h2>
+                <ol>{agenda_html}</ol>
+              </div>
+            </div>
+            """
+        )
+
+    return f"<html><head><meta charset='utf-8'><style>{DIN5008_STYLE}</style></head><body>{''.join(pages)}</body></html>"
+
 @router.get("/{meeting_id}/invitation.pdf")
 def generate_invitation_pdf(
     meeting_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
+    """Generische Einladung ohne Adressbezug ("Sehr geehrte Damen und
+    Herren") - z.B. für Aushang oder E-Mail-Versand. Für den Postversand an
+    einzelne Eigentümer siehe .../invitation/{owner_id}.pdf bzw.
+    .../invitation-batch.pdf weiter unten."""
     _require_read_access(current_user)
     meeting = _get_readable_meeting(db, meeting_id, current_user)
     property_ = db.get(Property, meeting.property_id)
@@ -276,6 +407,10 @@ def generate_invitation_pdf(
         for item in agenda_items
     )
 
+    # backend/app/routers/meetings.py — generate_invitation_pdf: .format(...)-Aufruf ersetzen
+    logo_uri = logo_data_uri(property_)
+    letterhead_html = f'<div class="letterhead"><img class="logo" src="{logo_uri}"></div>' if logo_uri else ""
+
     html_content = INVITATION_TEMPLATE.format(
         property_name=property_.name,
         property_address=property_.address,
@@ -284,6 +419,8 @@ def generate_invitation_pdf(
         meeting_date_line=meeting_date_line,
         location_detail_line=location_detail_line,
         agenda_html=agenda_html,
+        logo_css_box=LOGO_CSS_BOX,
+        letterhead_html=letterhead_html,
     )
 
     pdf_bytes = HTML(string=html_content).write_pdf()
@@ -300,6 +437,98 @@ def generate_invitation_pdf(
     )
 
 
+@router.get("/{meeting_id}/invitation/{owner_id}.pdf")
+def generate_invitation_pdf_for_owner(
+    meeting_id: int,
+    owner_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Adressierte Einzeleinladung für einen bestimmten Eigentümer -
+    DIN-5008-Anschriftfeld, direkt kuvertierfähig."""
+    _require_read_access(current_user)
+    meeting = _get_readable_meeting(db, meeting_id, current_user)
+    property_ = db.get(Property, meeting.property_id)
+    agenda_items = _load_agenda_items(db, meeting_id)
+    if not agenda_items:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Ohne Tagesordnungspunkte kann keine Einladung erzeugt werden."
+        )
+
+    owner = db.get(Owner, owner_id)
+    if owner is None or owner.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Eigentümer nicht gefunden")
+
+    is_current_owner = db.scalar(
+        select(UnitOwnerHistory.history_id)
+        .join(Unit, Unit.unit_id == UnitOwnerHistory.unit_id)
+        .where(
+            Unit.property_id == property_.property_id,
+            UnitOwnerHistory.owner_id == owner_id,
+            UnitOwnerHistory.valid_to.is_(None),
+        )
+        .limit(1)
+    )
+    if is_current_owner is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Eigentümer ist keiner Einheit dieser Liegenschaft aktuell zugeordnet."
+        )
+
+    postal_address = build_owner_postal_address(property_, owner)
+    html_content = _render_invitation_letters(
+        meeting, agenda_items, [(postal_address, greeting_for_owner(owner))], property_
+    )
+    pdf_bytes = HTML(string=html_content).write_pdf()
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Einladung_{meeting_id}_{owner.last_name}.pdf"'
+        },
+    )
+
+
+@router.get("/{meeting_id}/invitation-batch.pdf")
+def generate_invitation_batch_pdf(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Sammel-PDF für den Postversand: ein adressierter Brief je aktuellem
+    Eigentümer der Liegenschaft, in einem Dokument (Druck-/Kuvertierlauf)."""
+    _require_read_access(current_user)
+    meeting = _get_readable_meeting(db, meeting_id, current_user)
+    property_ = db.get(Property, meeting.property_id)
+    agenda_items = _load_agenda_items(db, meeting_id)
+    if not agenda_items:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Ohne Tagesordnungspunkte kann keine Einladung erzeugt werden."
+        )
+
+    owners = _current_property_owners(db, property_.property_id)
+    if not owners:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Keine aktuell zugeordneten Eigentümer für diese Liegenschaft gefunden."
+        )
+
+    addressees = [(build_owner_postal_address(property_, o), greeting_for_owner(o)) for o in owners]
+    html_content = _render_invitation_letters(meeting, agenda_items, addressees, property_)
+    pdf_bytes = HTML(string=html_content).write_pdf()
+
+    if meeting.status == "Geplant":
+        meeting.invitation_date = date_type.today()
+        meeting.status = "Eingeladen"
+        db.commit()
+
+    filename = f"Einladung_Versammlung_{meeting_id}_Sammelversand.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _de_number(value: float | None) -> str:
     """Deutsches Zahlenformat ohne Einheit: 846,76 - Rückgabe '–' bei fehlendem Wert."""
     if value is None:
@@ -309,12 +538,15 @@ def _de_number(value: float | None) -> str:
     return formatted
 
 
+# backend/app/routers/meetings.py — MINUTES_TEMPLATE: Style-Block und Body-Anfang ersetzen
 MINUTES_TEMPLATE = """
 <html>
 <head>
 <meta charset="utf-8">
 <style>
   body {{ font-family: 'DejaVu Sans', sans-serif; font-size: 11pt; color: #222; }}
+  .letterhead {{ position: relative; min-height: 35mm; }}
+  .letterhead .logo {{ position: absolute; {logo_css_box} }}
   .header {{ margin-bottom: 1cm; }}
   h1 {{ font-size: 14pt; }}
   h2 {{ font-size: 12pt; margin-top: 1cm; }}
@@ -334,6 +566,7 @@ MINUTES_TEMPLATE = """
 </style>
 </head>
 <body>
+  {letterhead_html}
   <div class="header">{property_name}<br>{property_address}</div>
   <h1>Niederschrift zur {meeting_type}</h1>
   <div class="meta">{meeting_date_line}{location_line}</div>
@@ -450,6 +683,11 @@ def generate_minutes_pdf(
         other_parts.append("</div>")
         other_resolutions_html = "".join(other_parts)
 
+# backend/app/routers/meetings.py — generate_minutes_pdf: vor dem .format(...)-Aufruf ergänzen
+# und logo_css_box/letterhead_html den Keyword-Args hinzufügen
+    logo_uri = logo_data_uri(property_)
+    letterhead_html = f'<div class="letterhead"><img class="logo" src="{logo_uri}"></div>' if logo_uri else ""
+
     html_content = MINUTES_TEMPLATE.format(
         property_name=property_.name,
         property_address=property_.address,
@@ -460,6 +698,8 @@ def generate_minutes_pdf(
         free_text_html=free_text_html,
         tops_html=tops_html,
         other_resolutions_html=other_resolutions_html,
+        logo_css_box=LOGO_CSS_BOX,
+        letterhead_html=letterhead_html,
     )
     pdf_bytes = HTML(string=html_content).write_pdf()
 

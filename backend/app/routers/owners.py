@@ -27,6 +27,7 @@ def _to_owner_out(db: Session, owner: Owner) -> OwnerOut:
     )
     return OwnerOut(
         owner_id=owner.owner_id,
+        salutation=owner.salutation,
         first_name=owner.first_name,
         last_name=owner.last_name,
         company_name=owner.company_name,
