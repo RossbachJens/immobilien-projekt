@@ -11,6 +11,9 @@ from io import BytesIO
 from app.core.access import accessible_property_ids
 from app.core.allocation import compute_unit_fractions, distribute_amount
 from app.core.deps import get_current_user
+# Import ergänzen (oben bei den übrigen app.core-Imports)
+from app.core.document_archive import archive_generated_pdf
+
 from app.core.reserve_accounts import cumulative_balance, reserve_account_ids
 from app.core.roles import resolve_role
 from app.db.session import get_db
@@ -868,8 +871,23 @@ def export_unit_settlement_pdf(
         reserve_fund=reserve_fund_data,
         tax_certificate_positions=tax_certificate_positions,
     )
-    
+
     filename = f"Abrechnung_{settlement.fiscal_year}_{unit.unit_number.replace(' ', '_')}.pdf"
+
+    archive_generated_pdf(
+        db,
+        property_id=property_.property_id,
+        category="Abrechnung",
+        title=f"Jahresabrechnung {settlement.fiscal_year} – {unit.unit_number}",
+        filename=filename,
+        content=pdf_bytes,
+        settlement_id=settlement.settlement_id,
+        unit_id=unit.unit_id,
+        owner_id=owner.owner_id if owner else None,
+        uploaded_by=current_user.user_id,
+    )
+    db.commit()
+
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -885,8 +903,10 @@ def export_settlement_batch_pdf(
 ) -> StreamingResponse:
     """Sammel-PDF für den Postversand: ein adressierter Brief je Einheit mit
     aktuell zugeordnetem Eigentümer (DIN-5008-Anschriftfeld), alle in einem
-    Dokument - für den Druck-/Kuvertierlauf. Einheiten ohne Eigentümer
-    werden stillschweigend übersprungen (kein Empfänger zum Adressieren)."""
+    Dokument - für den Druck-/Kuvertierlauf. Für das DMS wird zusätzlich je
+    Einheit ein individuelles PDF gerendert und archiviert (Grundsatz-
+    entscheidung: Archivierung je Einheit, nicht je Sammelversand). Einheiten
+    ohne Eigentümer werden weiterhin stillschweigend übersprungen."""
     settlement = _get_readable_period(db, settlement_id, current_user)
     property_ = db.get(Property, settlement.property_id)
 
@@ -951,6 +971,34 @@ def export_settlement_batch_pdf(
     pdf_bytes = build_settlement_pdf_batch(
         settlement=settlement, property_=property_, resolution=resolution, letters=letters
     )
+
+    for item in letters:
+        individual_pdf = build_settlement_pdf(
+            settlement=settlement,
+            property_=property_,
+            unit=item.unit,
+            owner=item.owner,
+            positions=item.positions,
+            accounts_by_position=item.accounts_by_position,
+            shares_by_position=item.shares_by_position,
+            summary=item.summary,
+            resolution=resolution,
+            reserve_fund=item.reserve_fund,
+            tax_certificate_positions=item.tax_certificate_positions,
+        )
+        archive_generated_pdf(
+            db,
+            property_id=property_.property_id,
+            category="Abrechnung",
+            title=f"Jahresabrechnung {settlement.fiscal_year} – {item.unit.unit_number}",
+            filename=f"Abrechnung_{settlement.fiscal_year}_{item.unit.unit_number.replace(' ', '_')}.pdf",
+            content=individual_pdf,
+            settlement_id=settlement.settlement_id,
+            unit_id=item.unit.unit_id,
+            owner_id=item.owner.owner_id if item.owner else None,
+            uploaded_by=current_user.user_id,
+        )
+    db.commit()
 
     filename = f"Abrechnungen_{settlement.fiscal_year}_Sammelversand.pdf"
     return StreamingResponse(

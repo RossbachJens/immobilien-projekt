@@ -141,3 +141,15 @@
   border-radius: 4px;
   font: inherit;
 }
+
+/* frontend/src/features/meetings/MeetingsPage.css — ergänzen */
+.meetings-page__entry-actions a {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: var(--color-white);
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--color-text);
+  font-size: inherit;
+}

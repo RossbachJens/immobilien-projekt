@@ -62,3 +62,8 @@
   background: var(--color-white);
   cursor: pointer;
 }
+/* frontend/src/features/documents/DocumentsPage.css — ergänzen */
+.documents-page__filter-hint {
+  color: #666;
+  font-size: 0.9rem;
+}

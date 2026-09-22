@@ -8,6 +8,9 @@ export type DocumentCategory =
   | "Versicherung"
   | "Vertrag"
   | "Protokoll"
+  | "Einladung"
+  | "Niederschrift"
+  | "Abrechnung"
   | "Sonstiges";
 
 export type DocumentVisibility = "intern" | "eigentuemer" | "alle";
@@ -55,6 +58,7 @@ export interface ListDocumentsParams {
   unit_id?: number;
   settlement_id?: number;
   journal_entry_id?: number;
+  meeting_id?: number;
 }
 
 export async function listDocuments(params?: ListDocumentsParams): Promise<Document[]> {

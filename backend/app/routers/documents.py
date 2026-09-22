@@ -21,7 +21,10 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 # (Grundsatzentscheidung "Dateiinhalt als BYTEA", Chat vom 07.09.2026).
 MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024
 
-CATEGORIES = {"Kontoauszug", "Rechnung", "Angebot", "Versicherung", "Vertrag", "Protokoll", "Sonstiges"}
+CATEGORIES = {
+    "Kontoauszug", "Rechnung", "Angebot", "Versicherung", "Vertrag", "Protokoll",
+    "Sonstiges", "Einladung", "Niederschrift", "Abrechnung",
+}
 VISIBILITIES = {"intern", "eigentuemer", "alle"}
 
 
@@ -131,6 +134,7 @@ def list_documents(
     unit_id: int | None = None,
     settlement_id: int | None = None,
     journal_entry_id: int | None = None,
+    meeting_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Document]:
@@ -150,6 +154,8 @@ def list_documents(
         query = query.where(Document.settlement_id == settlement_id)
     if journal_entry_id is not None:
         query = query.where(Document.journal_entry_id == journal_entry_id)
+    if meeting_id is not None:
+        query = query.where(Document.meeting_id == meeting_id)
 
     query = _apply_visibility_filter(query, current_user)
     query = query.order_by(Document.created_at.desc())

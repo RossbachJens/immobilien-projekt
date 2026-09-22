@@ -166,6 +166,21 @@
   bleibt ein gezielt an eine andere Einheit/Person gebundenes Dokument für Dritte
   verborgen. Listenabfragen laden den Dateiinhalt bewusst nicht mit (SQLAlchemy
   `defer(Document.content)`), nur der Download-Endpunkt fragt ihn gezielt ab.
+- **Automatische PDF-Archivierung im DMS:** Generierte Einladungen, Niederschriften und
+   Jahresabrechnungen werden über einen gemeinsamen Helper (`app/core/document_archive.py`)
+   automatisch bei jeder Generierung im DMS abgelegt - keine separate Aktion nötig. Jede
+   Generierung überschreibt die vorherige Fassung (kein Versionsverlauf, da reproduzierbare
+   Systemdokumente, kein DSGVO-Aufbewahrungskonflikt). Drei neue Kategorien (`Einladung`,
+   `Niederschrift`, `Abrechnung`, Migration `0017_document_categories`). Sammel-PDFs
+   (Sammelversand) werden NICHT als ein Gesamtdokument archiviert, sondern einzeln je
+   Eigentümer/Einheit - dafür wird zusätzlich zum kombinierten Druck-PDF pro Empfänger ein
+   individuelles PDF gerendert. Abgleich der "gleichen" Fassung läuft über
+   category + meeting_id (+ owner_id bei Einladungen, da mehrere Empfänger je Versammlung)
+   bzw. category + settlement_id + unit_id (bewusst OHNE owner_id, damit ein
+   Eigentümerwechsel dieselbe Dokumentzeile weiterführt). Sichtbarkeit `eigentuemer`, da die
+   Dokumente inhaltlich ohnehin an die Eigentümer adressiert sind. `GET /documents`
+   unterstützt zusätzlich einen `meeting_id`-Filter; MeetingsPage/SettlementPeriodsPage
+   verlinken direkt auf die entsprechend gefilterte DMS-Ansicht.
 - **Backup-Verwaltung übers Admin-Frontend:** Der bestehende `backup`-Service
   (automatischer `pg_dump` als Postgres-Superuser, `scripts/backup-loop.sh`)
   bekommt zusätzlich einen eigenen, kleinen Container (`backup-service/`, Basis
@@ -274,9 +289,11 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 ## Meilensteine je Phase
 - **Phase 0:** `docker-compose up` startet DB + FastAPI `/health` + React-Grundgerüst mit
   modularer Ordnerstruktur und übernommenem Design. ✅ erledigt
-- **Phase 1:** Vier Test-User (Admin/Verwalter/Eigentümer/Mieter) können sich einloggen
-  und erhalten nachweislich unterschiedliche Ergebnismengen auf `/properties` —
-  verifiziert durch einen negativen RLS-Testfall. *(Login/JWT/Nutzerverwaltung ✅, RLS-Testfall offen)*
+- **Phase 1:** Vier Test-User (Admin/Verwalter/Eigentümer/Mieter) können sich einloggen und
+  erhalten nachweislich unterschiedliche Ergebnismengen auf `/properties` —
+  verifiziert durch einen negativen RLS-Testfall. ✅ erledigt — Testfall in
+  `backend/tests/test_rls.py` (Policies direkt sowie End-to-End über alle vier Rollen),
+  inkl. Fix eines ContextVar/Threadpool-Bugs (siehe `app/core/rls.py`).
 - **Phase 2:** Admin/Verwalter legt Objekt + Einheiten an, ordnet Eigentümer zu —
   vollständig im Frontend. ✅ erledigt
 - **Phase 3:** Buchung mit Soll≠Haben wird serverseitig zuverlässig abgelehnt (Testfall). ✅ erledigt
@@ -294,13 +311,16 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
   Bescheinigung i.S.d. § 35a EStG als weiterer optionaler PDF-Abschnitt.
 - **Phase 6:** Jede Liegenschaft verfügt über mindestens ein Giro- und ein Rücklagenkonto mit
   eigener IBAN und Gültigkeitszeitraum. ✅ erledigt
-- **Phase 7:** Vor Produktivbetrieb abgeschlossen. *(offen)* — Backup-Verwaltung übers
-  Admin-Frontend ist umgesetzt: eigenständiger `backup-service`-Container mit interner
-  Admin-API (Liste, manuelles Auslösen, Download, Löschen, Restore inkl. automatischem
-  Sicherheitsbackup vor jedem Restore), admin-only Router im Hauptbackend als Proxy,
-  `features/backups` im Frontend. ✅ erledigt. Weiterhin offen: RLS-Durchsetzung,
-  Google-SSO-Flow, `access_log`-Middleware (deckt Backups noch nicht ab), produktiver
-  E-Mail-Versand, Rate-Limiting, Key-Rotation, E2E-Tests.
+-**Phase 7:** Vor Produktivbetrieb abgeschlossen. *(teilweise offen)* — Backup-Verwaltung
+  übers Admin-Frontend ✅ erledigt. PostgreSQL-RLS als zweite Verteidigungslinie ✅ erledigt
+  (Migration `0014_row_level_security`, eingeschränkter `app_user`, Policies für direkte und
+  kaskadierende `property_id`-Tabellen sowie Sonderfälle `properties`/`accounts`; verifiziert
+  über `backend/tests/test_rls.py`). Google-SSO-Login-Flow ✅ erledigt (`app/core/google_oauth.py`,
+  Kontoverknüpfung per E-Mail bei erster Google-Anmeldung). `access_log`-Middleware ✅ erledigt,
+  deckt aber weiterhin nur owners/tenants/users ab — Dokumente (inkl. Downloads), Backups und
+  generierte PDFs folgen in einem späteren Durchgang. Weiterhin offen: produktiver E-Mail-Versand,
+  Rate-Limiting, Key-Rotation, E2E-Tests, Verschlüsselung von `documents.content` für sensible
+  Kategorien.
 - **Phase 8:** Eine Eigentümerversammlung kann angelegt, Einladung und Niederschrift als PDF
   erzeugt und Beschlüsse daraus in die Beschluss-Sammlung übernommen werden; ein
   Umlaufbeschluss läuft über dieselbe Struktur. ✅ erledigt, inklusive der strukturierten
@@ -311,25 +331,26 @@ React + TypeScript (Vite)  →  FastAPI (SQLAlchemy 2.0, Alembic, Pydantic)  →
 - **Phase 10:** Kontoauszüge, Rechnungen, Angebote und weitere Belege lassen sich je
   Liegenschaft hochladen, kategorisieren, optional gezielt verknüpfen (Einheit/Eigentümer/
   Mieter/Abrechnung/Buchung/Versammlung) und gestaffelt sichtbar machen. ✅ erledigt —
-  automatische Ablage generierter PDFs (Einladungen, Niederschriften, Abrechnungen) im DMS
-  ist noch offen.
+  inklusive automatischer Ablage generierter PDFs (Einladung/Niederschrift/Abrechnung,
+  `app/core/document_archive.py`): jede Generierung überschreibt die vorherige Fassung,
+  Sammel-PDFs werden einzeln je Eigentümer/Einheit archiviert statt als ein Gesamtdokument,
+  Sichtbarkeit `eigentuemer`. MeetingsPage/SettlementPeriodsPage verlinken direkt auf die
+  entsprechend gefilterte DMS-Ansicht (`GET /documents?meeting_id=`/`?settlement_id=`).
 
 
 ## Status
 - [x] Datenbankschema (`01_schema.sql`) inkl. DSGVO-Maßnahmen
 - [x] Phase 0 — Setup
-- [ ] Phase 1 — Auth & Access Control *(Login, JWT, Nutzerverwaltung inkl. Rollenzuweisung ✅; RLS-Policies, `access_log`-Middleware und Google-SSO-Login-Flow offen)*
+- [x] Phase 1 — Auth & Access Control *(Login, JWT, Nutzerverwaltung inkl. Rollenzuweisung, RLS-Policies (Migration 0014), Google-SSO-Login-Flow und `access_log`-Middleware ✅ erledigt — Middleware-Abdeckung noch eingeschränkt, siehe Phase 7)*
 - [x] Phase 2 — Stammdaten *(Backend-CRUD für properties/units/owners/tenants inkl. Soft-Delete und Eigentümerzuordnung sowie Frontend für Properties/Units/Owners/Tenants ✅)*
 - [x] Phase 3 — Buchhaltung *(Kontenrahmen global + liegenschaftseigen, Journal-Erfassung mit Soll=Haben-Trigger, Storno-Flow, Frontend inkl. Kontenverwaltung je Liegenschaft ✅)*
 - [x] Phase 4 — Wirtschaftsplan, Sonderumlagen & Beschluss-Sammlung *(Backend + Frontend ✅; Positionen bis zur Beschlussfassung editierbar/löschbar ✅)*
 - [x] Phase 5 — Nebenkostenabrechnung *(Kernfunktion inkl. PDF-Export, Zahlungseingang (integriert in die Buchhaltungsseite) und eigenständiges Umlageschlüssel-CRUD-Modul ✅; zusätzlich Rücklagendarstellung/Vermögensaufstellung und Bescheinigung i.S.d. § 35a EStG ✅)*
 - [x] Phase 6 — Reale Bankkonten je Liegenschaft *(`property_bank_accounts` mit Gültigkeitszeitraum ✅)*
-- [ ] Phase 7 — Härtung & Betrieb *(Backup-Verwaltung übers Admin-Frontend — `backup-service` mit interner Admin-API, admin-only Proxy-Router, Restore mit automatischem Sicherheitsbackup ✅ erledigt; weiterhin offen: RLS-Durchsetzung, Google-SSO-Flow, `access_log`-Middleware, produktiver E-Mail-Versand, Rate-Limiting, Key-Rotation, E2E-Tests)*
+- [ ] Phase 7 — Härtung & Betrieb *(Backup-Verwaltung übers Admin-Frontend ✅; PostgreSQL-RLS als zweite Verteidigungslinie (Migration 0014) ✅; Google-SSO-Login-Flow ✅; `access_log`-Middleware ✅ erledigt, deckt bisher aber nur owners/tenants/users ab — documents/backups/generierte PDFs offen; weiterhin offen: produktiver E-Mail-Versand, Rate-Limiting, Key-Rotation, E2E-Tests, Verschlüsselung von `documents.content`)*
 - [x] Phase 8 — Eigentümerversammlungen & Umlaufbeschluss *(informell ergänzt; `owner_meetings`, Einladung/Niederschrift als PDF ✅; strukturierte Niederschrift inkl. Kopfdaten, TOP-Protokolltext, Abstimmungsergebnissen und zugehörigem Frontend-Formular ✅)*
 - [ ] Phase 9 — Mietsollstellung & SEPA *(offen, verschoben aus der ursprünglich als Phase 6 geplanten Reihenfolge)*
-- [x] Phase 10 — Dokumentenverwaltung (DMS) *(informell ergänzt; Upload/Download/Löschen mit Kategorien, optionaler Verknüpfung und gestaffelter Sichtbarkeit ✅; automatische Archivierung generierter PDFs offen)*
+- [x] Phase 10 — Dokumentenverwaltung (DMS) *(informell ergänzt; Upload/Download/Löschen mit Kategorien, optionaler Verknüpfung und gestaffelter Sichtbarkeit ✅; automatische Archivierung generierter PDFs (Einladung/Niederschrift/Abrechnung, überschreibend bei jeder Generierung, Sichtbarkeit "eigentuemer") ✅ erledigt)*und gestaffelter Sichtbarkeit ✅; automatische Archivierung generierter PDFs offen)*
 
 ### Bewusst zurückgestellt (kein eigener Phasen-Slot)
 - Mieterseitige Betriebskostenabrechnung (aktuell nur eigentümerseitige Nebenkostenabrechnung)
-- Automatische Archivierung generierter PDFs (Einladungen, Niederschriften, Jahresabrechnungen)
-  im DMS (`documents`) - aktuell nur manueller Upload, generierte PDFs bleiben reine Downloads

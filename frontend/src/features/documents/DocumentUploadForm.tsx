@@ -12,6 +12,9 @@ const CATEGORIES: DocumentCategory[] = [
   "Versicherung",
   "Vertrag",
   "Protokoll",
+  "Einladung",
+  "Niederschrift",
+  "Abrechnung",
   "Sonstiges",
 ];
 

@@ -1,5 +1,6 @@
 // frontend/src/features/settlementPeriods/SettlementPeriodsPage.tsx
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Card } from "../../components/Card";
 import { useCurrentProperty } from "../../context/PropertyContext";
@@ -153,6 +154,12 @@ export function SettlementPeriodsPage() {
                   )}
                 </div>
                 <div className="settlement-periods-page__period-actions">
+                  <Link
+                    to={`/documents?settlement_id=${period.settlement_id}`}
+                    className="settlement-periods-page__archive-link"
+                  >
+                    Archivierte PDFs
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setExpandedId(expandedId === period.settlement_id ? null : period.settlement_id)}

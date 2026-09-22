@@ -1,5 +1,6 @@
 // frontend/src/features/documents/DocumentsPage.tsx
 import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { Card } from "../../components/Card";
 import { useCurrentProperty } from "../../context/PropertyContext";
@@ -17,8 +18,25 @@ function formatFileSize(bytes: number): string {
 
 export function DocumentsPage() {
   const { propertyId, property, properties, isLoading: propertiesLoading } = useCurrentProperty();
+  const [searchParams] = useSearchParams();
 
-  const listParams = propertyId != null ? { property_id: propertyId } : undefined;
+  // Optionale Einschränkung über Query-Parameter - so verlinken
+  // MeetingsPage/SettlementPeriodsPage direkt auf die für eine Versammlung
+  // bzw. Abrechnung automatisch archivierten PDFs (siehe archive_generated_pdf
+  // in app/core/document_archive.py).
+  const meetingIdParam = searchParams.get("meeting_id");
+  const settlementIdParam = searchParams.get("settlement_id");
+  const meetingId = meetingIdParam ? Number(meetingIdParam) : undefined;
+  const settlementId = settlementIdParam ? Number(settlementIdParam) : undefined;
+
+  const listParams =
+    propertyId != null
+      ? {
+          property_id: propertyId,
+          ...(meetingId !== undefined ? { meeting_id: meetingId } : {}),
+          ...(settlementId !== undefined ? { settlement_id: settlementId } : {}),
+        }
+      : undefined;
   const { data: documents, isLoading } = useDocuments(listParams);
   const uploadMutation = useUploadDocument(listParams);
   const deleteMutation = useDeleteDocument(listParams);
@@ -70,6 +88,15 @@ export function DocumentsPage() {
       <Card>
         <h1>Dokumente – {property?.name}</h1>
       </Card>
+
+      {(meetingId !== undefined || settlementId !== undefined) && (
+        <Card>
+          <p className="documents-page__filter-hint">
+            Gefiltert {meetingId !== undefined ? `nach Versammlung #${meetingId}` : `nach Abrechnung #${settlementId}`}.{" "}
+            <Link to="/documents">Filter aufheben</Link>
+          </p>
+        </Card>
+      )}
 
       <Card>
         <div className="documents-page__header">

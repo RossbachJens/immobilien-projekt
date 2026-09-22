@@ -1,11 +1,12 @@
 // frontend/src/features/meetings/MeetingsPage.tsx
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { Card } from "../../components/Card";
 import { useCurrentProperty } from "../../context/PropertyContext";
 import { AgendaItemsPanel } from "./AgendaItemsPanel";
-import { downloadInvitation, downloadMinutes } from "./api";
+import { downloadInvitation, downloadInvitationBatch, downloadMinutes } from "./api";
 import type { Meeting, MeetingPayload, MeetingStatus } from "./api";
 import { MeetingForm } from "./MeetingForm";
 import { useCreateMeeting, useMeetings, useUpdateMeeting } from "./useMeetings";
@@ -108,6 +109,18 @@ export function MeetingsPage() {
     }
   }
 
+  async function handleInvitationBatch(meetingId: number) {
+    setDownloadError(null);
+    try {
+      await downloadInvitationBatch(meetingId);
+    } catch {
+      setDownloadError(
+        "Einladung (Sammelversand) konnte nicht erzeugt werden - fehlt eventuell eine Tagesordnung " +
+          "oder ein aktuell zugeordneter Eigentümer?",
+      );
+    }
+  }
+
   async function handleMinutes(meetingId: number) {
     setDownloadError(null);
     try {
@@ -181,13 +194,15 @@ export function MeetingsPage() {
                     <button type="button" onClick={() => handleInvitation(m.meeting_id)}>
                       Einladung (PDF)
                     </button>
-                    // MeetingsPage.tsx — neben dem bestehenden "Einladung (PDF)"-Button
                     <button type="button" onClick={() => handleInvitationBatch(m.meeting_id)}>
                       Einladung Sammelversand (Post)
                     </button>
                     <button type="button" onClick={() => handleMinutes(m.meeting_id)}>
                       Niederschrift (PDF)
                     </button>
+                    <Link to={`/documents?meeting_id=${m.meeting_id}`} className="meetings-page__archive-link">
+                      Archivierte PDFs
+                    </Link>
                     <button type="button" onClick={() => toggleExpand(m)}>
                       {expandedId === m.meeting_id ? "Details ausblenden" : "Details"}
                     </button>

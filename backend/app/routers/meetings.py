@@ -11,7 +11,7 @@ from weasyprint import HTML
 
 from app.core.access import accessible_property_ids
 from app.core.deps import get_current_user
-# backend/app/routers/meetings.py — Import ersetzen
+from app.core.document_archive import archive_generated_pdf
 from app.core.postal import LOGO_CSS_BOX, PostalAddress, build_owner_postal_address, greeting_for_owner, logo_data_uri
 from app.core.roles import resolve_role
 from app.db.session import get_db
@@ -243,7 +243,6 @@ def delete_agenda_item(
     db.commit()
 
 
-# backend/app/routers/meetings.py — INVITATION_TEMPLATE ersetzen
 INVITATION_TEMPLATE = """
 <html>
 <head>
@@ -273,15 +272,6 @@ INVITATION_TEMPLATE = """
 """
 
 
-# --------------------------------------------------------------------
-# DIN-5008-Einladung: gemeinsame Vorlage für Einzel- und Sammel-PDF.
-# Jeder Empfänger bekommt einen eigenen Seiten-Block mit fixem
-# Anschriftfeld (position:absolute, gemessen ab wirklichem Blattrand -
-# .din5008-page selbst trägt daher KEIN Padding, das Innere
-# ('.din5008-content') hat sein eigenes).
-# --------------------------------------------------------------------
-# backend/app/routers/meetings.py — DIN5008_STYLE ersetzen (nur die letzte Zeile vor
-# .din5008-content geändert + %-Substitution)
 DIN5008_STYLE = (
     """
 @page { size: A4; margin: 0; }
@@ -371,6 +361,7 @@ def _render_invitation_letters(
 
     return f"<html><head><meta charset='utf-8'><style>{DIN5008_STYLE}</style></head><body>{''.join(pages)}</body></html>"
 
+
 @router.get("/{meeting_id}/invitation.pdf")
 def generate_invitation_pdf(
     meeting_id: int,
@@ -407,7 +398,6 @@ def generate_invitation_pdf(
         for item in agenda_items
     )
 
-    # backend/app/routers/meetings.py — generate_invitation_pdf: .format(...)-Aufruf ersetzen
     logo_uri = logo_data_uri(property_)
     letterhead_html = f'<div class="letterhead"><img class="logo" src="{logo_uri}"></div>' if logo_uri else ""
 
@@ -424,6 +414,21 @@ def generate_invitation_pdf(
     )
 
     pdf_bytes = HTML(string=html_content).write_pdf()
+
+    # Automatische DMS-Archivierung (überschreibt die vorherige Fassung) -
+    # owner_id=None + match_owner_id=True trennt diese unadressierte Fassung
+    # sauber von den adressierten Einzelbriefen unten.
+    archive_generated_pdf(
+        db,
+        property_id=meeting.property_id,
+        category="Einladung",
+        title=f"Einladung {meeting.meeting_type} – {meeting.meeting_date.strftime('%d.%m.%Y')}",
+        filename=f"Einladung_Versammlung_{meeting_id}.pdf",
+        content=pdf_bytes,
+        meeting_id=meeting_id,
+        match_owner_id=True,
+        uploaded_by=current_user.user_id,
+    )
 
     meeting.invitation_date = date_type.today()
     if meeting.status == "Geplant":
@@ -480,6 +485,20 @@ def generate_invitation_pdf_for_owner(
     )
     pdf_bytes = HTML(string=html_content).write_pdf()
 
+    archive_generated_pdf(
+        db,
+        property_id=property_.property_id,
+        category="Einladung",
+        title=f"Einladung {meeting.meeting_type} – {owner.last_name}",
+        filename=f"Einladung_{meeting_id}_{owner.last_name}.pdf",
+        content=pdf_bytes,
+        meeting_id=meeting_id,
+        owner_id=owner.owner_id,
+        match_owner_id=True,
+        uploaded_by=current_user.user_id,
+    )
+    db.commit()
+
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -496,7 +515,11 @@ def generate_invitation_batch_pdf(
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     """Sammel-PDF für den Postversand: ein adressierter Brief je aktuellem
-    Eigentümer der Liegenschaft, in einem Dokument (Druck-/Kuvertierlauf)."""
+    Eigentümer der Liegenschaft, in einem Dokument (Druck-/Kuvertierlauf).
+    Für das DMS wird zusätzlich je Eigentümer ein individuelles PDF gerendert
+    und archiviert - die Sammel-PDF selbst wird bewusst NICHT als ein
+    Gesamtdokument abgelegt (Grundsatzentscheidung: Archivierung je
+    Eigentümer/Einheit, nicht je Sammelversand)."""
     _require_read_access(current_user)
     meeting = _get_readable_meeting(db, meeting_id, current_user)
     property_ = db.get(Property, meeting.property_id)
@@ -516,10 +539,26 @@ def generate_invitation_batch_pdf(
     html_content = _render_invitation_letters(meeting, agenda_items, addressees, property_)
     pdf_bytes = HTML(string=html_content).write_pdf()
 
+    for owner, addressee in zip(owners, addressees):
+        individual_html = _render_invitation_letters(meeting, agenda_items, [addressee], property_)
+        individual_pdf = HTML(string=individual_html).write_pdf()
+        archive_generated_pdf(
+            db,
+            property_id=property_.property_id,
+            category="Einladung",
+            title=f"Einladung {meeting.meeting_type} – {owner.last_name}",
+            filename=f"Einladung_{meeting_id}_{owner.last_name}.pdf",
+            content=individual_pdf,
+            meeting_id=meeting_id,
+            owner_id=owner.owner_id,
+            match_owner_id=True,
+            uploaded_by=current_user.user_id,
+        )
+
     if meeting.status == "Geplant":
         meeting.invitation_date = date_type.today()
         meeting.status = "Eingeladen"
-        db.commit()
+    db.commit()
 
     filename = f"Einladung_Versammlung_{meeting_id}_Sammelversand.pdf"
     return StreamingResponse(
@@ -538,7 +577,6 @@ def _de_number(value: float | None) -> str:
     return formatted
 
 
-# backend/app/routers/meetings.py — MINUTES_TEMPLATE: Style-Block und Body-Anfang ersetzen
 MINUTES_TEMPLATE = """
 <html>
 <head>
@@ -683,8 +721,6 @@ def generate_minutes_pdf(
         other_parts.append("</div>")
         other_resolutions_html = "".join(other_parts)
 
-# backend/app/routers/meetings.py — generate_minutes_pdf: vor dem .format(...)-Aufruf ergänzen
-# und logo_css_box/letterhead_html den Keyword-Args hinzufügen
     logo_uri = logo_data_uri(property_)
     letterhead_html = f'<div class="letterhead"><img class="logo" src="{logo_uri}"></div>' if logo_uri else ""
 
@@ -702,6 +738,17 @@ def generate_minutes_pdf(
         letterhead_html=letterhead_html,
     )
     pdf_bytes = HTML(string=html_content).write_pdf()
+
+    archive_generated_pdf(
+        db,
+        property_id=meeting.property_id,
+        category="Niederschrift",
+        title=f"Niederschrift {meeting.meeting_type} – {meeting.meeting_date.strftime('%d.%m.%Y')}",
+        filename=f"Niederschrift_Versammlung_{meeting_id}.pdf",
+        content=pdf_bytes,
+        meeting_id=meeting_id,
+        uploaded_by=current_user.user_id,
+    )
 
     if meeting.status in ("Geplant", "Eingeladen", "Durchgeführt"):
         meeting.status = "Protokolliert"
