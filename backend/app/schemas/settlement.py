@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SettlementStatus = Literal["Entwurf", "Beschlossen", "Inaktiv"]
+TaxCategory = Literal["keine", "haushaltsnahe_dienstleistung", "handwerkerleistung"]
 
 
 class SettlementPeriodCreate(BaseModel):
@@ -35,20 +36,6 @@ class SettlementPeriodOut(BaseModel):
     created_at: datetime
 
 
-class SettlementPositionCreate(BaseModel):
-    # Mehrere Konten pro Position ("Pooling") - z.B. Heizkosten aus
-    # Brennstoff + Wartung + Messdienst-Gebühr zu einer Position bündeln,
-    # bevor nach HeizkostenV verteilt wird. Mindestens ein Konto Pflicht.
-    account_ids: list[int] = Field(min_length=1)
-    description: str | None = Field(default=None, max_length=150)
-    allocation_key_type: str = Field(min_length=1, max_length=50)
-    is_apportionable: bool = False
-
-    @field_validator("account_ids")
-    @classmethod
-    def _dedupe_account_ids(cls, value: list[int]) -> list[int]:
-        return list(dict.fromkeys(value))
-
 class UnitSettlementShareOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,67 +44,33 @@ class UnitSettlementShareOut(BaseModel):
     unit_id: int
     allocated_actual_amount: float
 
-class SettlementPositionUpdate(BaseModel):
-    """PATCH-Semantik wie bei BudgetPositionUpdate - nur mitgeschickte Felder
-    werden geändert. Nur zulässig, solange die Abrechnung im Status
-    'Entwurf' ist (siehe Router). Bei jeder Änderung wird der Ist-Betrag neu
-    aus den Buchungen ermittelt und die Verteilung auf Einheiten komplett
-    neu berechnet."""
 
-    account_ids: list[int] | None = None
-    description: str | None = Field(default=None, max_length=150)
-    allocation_key_type: str | None = Field(default=None, min_length=1, max_length=50)
-    is_apportionable: bool | None = None
-
-    @field_validator("account_ids")
-    @classmethod
-    def _validate_account_ids(cls, value: list[int] | None) -> list[int] | None:
-        if value is None:
-            return value
-        if len(value) == 0:
-            raise ValueError("account_ids darf nicht leer sein, wenn angegeben.")
-        return list(dict.fromkeys(value))
-
-class SettlementPositionOut(BaseModel):
+class UnitSettlementTaxShareOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    share_id: int
     position_id: int
-    settlement_id: int
-    account_ids: list[int]
-    description: str | None
-    actual_amount: float
-    allocation_key_type: str
-    is_apportionable: bool
-    unit_shares: list[UnitSettlementShareOut] = Field(default_factory=list)
+    unit_id: int
+    allocated_deductible_amount: float
 
-class UnitSettlementSummaryOut(BaseModel):
+
+class UnitSettlementTenantShareOut(BaseModel):
+    """Taggenaue Verteilung einer umlagefähigen Position auf einen
+    Mietvertrag - siehe app/models/abrechnung.py::UnitSettlementTenantShare."""
+
     model_config = ConfigDict(from_attributes=True)
 
-    summary_id: int
-    settlement_id: int
-    unit_id: int
-    total_actual_costs: float
-    total_prepayments: float
-    # total_actual_costs - total_prepayments: negativ = Erstattung,
-    # positiv = Nachzahlung/Abrechnungsspitze (Vorzeichen wie in der
-    # Muster-Einzelabrechnung: "-70,85 € (Erstattung)").
-    balance: float
-
-# backend/app/schemas/settlement.py — TaxCategory ergänzen (nach SettlementStatus)
-TaxCategory = Literal["keine", "haushaltsnahe_dienstleistung", "handwerkerleistung"]
+    share_id: int
+    position_id: int
+    lease_id: int
+    allocated_amount: float
 
 
-# SettlementPositionCreate ergänzen
 class SettlementPositionCreate(BaseModel):
     account_ids: list[int] = Field(min_length=1)
     description: str | None = Field(default=None, max_length=150)
     allocation_key_type: str = Field(min_length=1, max_length=50)
     is_apportionable: bool = False
-    # §35a EStG - siehe Migration 0012. 'keine' (Default) = Position ist
-    # steuerlich nicht relevant. Materialkosten sind bei BEIDEN übrigen
-    # Kategorien ausgeschlossen - deductible_amount ist bewusst getrennt von
-    # actual_amount, weil die Buchhaltung selbst keine Lohn-/Material-
-    # Trennung kennt (eine Rechnung wird als Ganzes gebucht).
     tax_category: TaxCategory = "keine"
     deductible_amount: float | None = Field(default=None, ge=0)
 
@@ -127,7 +80,6 @@ class SettlementPositionCreate(BaseModel):
         return list(dict.fromkeys(value))
 
 
-# SettlementPositionUpdate ergänzen
 class SettlementPositionUpdate(BaseModel):
     account_ids: list[int] | None = None
     description: str | None = Field(default=None, max_length=150)
@@ -146,17 +98,6 @@ class SettlementPositionUpdate(BaseModel):
         return list(dict.fromkeys(value))
 
 
-# Neue Klasse, z.B. vor SettlementPositionOut
-class UnitSettlementTaxShareOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    share_id: int
-    position_id: int
-    unit_id: int
-    allocated_deductible_amount: float
-
-
-# SettlementPositionOut ergänzen
 class SettlementPositionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -171,3 +112,37 @@ class SettlementPositionOut(BaseModel):
     deductible_amount: float | None
     unit_shares: list[UnitSettlementShareOut] = Field(default_factory=list)
     tax_shares: list[UnitSettlementTaxShareOut] = Field(default_factory=list)
+    tenant_shares: list[UnitSettlementTenantShareOut] = Field(default_factory=list)
+
+
+class UnitSettlementSummaryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    summary_id: int
+    settlement_id: int
+    unit_id: int
+    total_actual_costs: float
+    total_prepayments: float
+    balance: float
+
+
+class LeaseSettlementSummaryOut(BaseModel):
+    """Ergebnis je Mietvertrag - siehe app/models/abrechnung.py::LeaseSettlementSummary.
+    Mietername und Vertragszeitraum sind denormalisiert mitgegeben (Chat vom
+    24.09.2026), damit das Frontend ohne zusätzliche Requests eine sprechende
+    Bezeichnung anzeigen kann - LeaseSettlementSummary selbst kennt weder
+    tenant_id noch die Vertragsdaten, nur lease_id."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    summary_id: int
+    settlement_id: int
+    lease_id: int
+    unit_id: int
+    total_actual_costs: float
+    total_prepayments: float
+    balance: float
+    tenant_first_name: str
+    tenant_last_name: str
+    lease_start_date: date
+    lease_end_date: date | None

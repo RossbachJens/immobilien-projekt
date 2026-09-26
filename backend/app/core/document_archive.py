@@ -10,15 +10,17 @@ und aktualisiert dessen Inhalt in place, statt einen neuen Verlaufseintrag
 anzulegen - kein DSGVO-Aufbewahrungskonflikt, da es sich um vom System
 selbst reproduzierbare Dokumente handelt, nicht um Originalbelege.
 
-match_owner_id steuert, ob owner_id Teil des Abgleichs ist:
-  - Einladungen: True - dieselbe meeting_id hat mehrere Empfänger, ohne
-    owner_id im Abgleich wären sie nicht unterscheidbar (auch die generische,
-    unadressierte Einladung mit owner_id=None muss von den adressierten
-    Einzelbriefen getrennt bleiben).
-  - Abrechnungen: False (Default) - unit_id + settlement_id sind bereits
-    eindeutig; bewusst OHNE owner_id im Abgleich, damit ein Eigentümerwechsel
-    dieselbe Dokumentzeile weiterführt statt eine zweite anzulegen.
-  - Niederschrift: False (Default) - ohnehin nur eine Fassung je meeting_id.
+lease_id (Chat vom 24.09.2026, mieterseitige Betriebskostenabrechnung) geht
+- wie unit_id/settlement_id/meeting_id - immer als fester Teil des Abgleichs
+ein: NULL für Eigentümer-PDFs, gesetzt für Mieter-PDFs je Vertrag. Ein
+Mieterwechsel bekommt dadurch bewusst eine NEUE Dokumentzeile (anders als
+match_owner_id=False bei Eigentümer-Abrechnungen) - die Beträge unterscheiden
+sich ja tatsächlich je Vertrag (taggenaue Verteilung), es ist also kein
+"derselbe" Brief mit nur neuem Namen.
+
+match_owner_id steuert, ob owner_id Teil des Abgleichs ist - unverändert
+gegenüber der bisherigen Logik (siehe Docstring-Details in den bisherigen
+Aufrufern).
 """
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -37,6 +39,8 @@ def archive_generated_pdf(
     visibility: str = "eigentuemer",
     unit_id: int | None = None,
     owner_id: int | None = None,
+    tenant_id: int | None = None,
+    lease_id: int | None = None,
     settlement_id: int | None = None,
     meeting_id: int | None = None,
     match_owner_id: bool = False,
@@ -47,6 +51,7 @@ def archive_generated_pdf(
         Document.category == category,
         Document.deleted_at.is_(None),
         Document.unit_id == unit_id if unit_id is not None else Document.unit_id.is_(None),
+        Document.lease_id == lease_id if lease_id is not None else Document.lease_id.is_(None),
         Document.settlement_id == settlement_id
         if settlement_id is not None
         else Document.settlement_id.is_(None),
@@ -65,6 +70,7 @@ def archive_generated_pdf(
         existing.content = content
         existing.visibility = visibility
         existing.owner_id = owner_id
+        existing.tenant_id = tenant_id
         existing.uploaded_by = uploaded_by
         existing.created_at = func.now()
         return existing
@@ -74,7 +80,8 @@ def archive_generated_pdf(
         category=category,
         unit_id=unit_id,
         owner_id=owner_id,
-        tenant_id=None,
+        tenant_id=tenant_id,
+        lease_id=lease_id,
         settlement_id=settlement_id,
         journal_entry_id=None,
         meeting_id=meeting_id,

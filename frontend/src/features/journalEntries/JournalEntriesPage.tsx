@@ -345,6 +345,7 @@ export function JournalEntriesPage() {
         <Card>
           <h2>Zahlungseingang erfassen</h2>
           <PaymentForm
+            propertyId={propertyId}
             units={units ?? []}
             onSubmit={handlePayment}
             onCancel={() => setMode("idle")}

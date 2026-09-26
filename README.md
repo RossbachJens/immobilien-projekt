@@ -70,6 +70,10 @@ immobilien-project/
 │   │   ├── 0011_reserve_fund_statement.py   # Rücklagendarstellung & Vermögensaufstellung
 │   │   ├── 0012_settlement_tax_details.py   # § 35a EStG: Lohnanteil je Abrechnungsposition
 │   │   └── 0013_documents.py                # Dokumentenverwaltung (DMS)
+│   │   ├── 0014_row_level_security.py       # PostgreSQL-RLS als zweite Verteidigungslinie
+│   │   ├── 0015_owner_salutation.py         # Anrede je Eigentümer (DIN-5008-Anschriftfeld)
+│   │   ├── 0016_property_logo.py            # Verwalter-Logo für PDF-Seitenkopf
+│   │   └── 0017_document_categories.py      # Neue Kategorien für automatisch archivierte PDFs
 │   └── app/
 │       ├── models/ · schemas/ · routers/ · core/ · services/   # FastAPI-Anwendung (SQLAlchemy 2.0, Pydantic)
 │       │                                                        # inkl. app/core/backup_client.py + app/routers/backups.py
@@ -112,4 +116,4 @@ Noch offen:
    owners/tenants/users ab, nicht Dokumente (inkl. Downloads), Backups und die
    PDF-Generierungs-Endpunkte.
    (`generate_monthly_lease_demands`, `03_procedures.sql`) existiert bereits, ist aber noch
-   nicht über einen Endpunkt erreichbar; der Pain.008-XML-Export selbst ist noch nicht begonnen.
+- Mietsollstellung & SEPA-Export (Pain.008): [...]

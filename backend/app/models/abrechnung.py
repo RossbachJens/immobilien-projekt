@@ -42,6 +42,8 @@ class SettlementPosition(Base):
     umlagefähige von nicht umlagefähigen Kosten (vgl. Muster-Einzelabrechnung)
     - bewusst Eigenschaft der Position statt des Kontos, da dieselbe
     Kostenart je nach Vertrag/Satzung unterschiedlich eingestuft werden kann.
+    Nur umlagefähige Positionen werden zusätzlich taggenau auf Mietverträge
+    verteilt (siehe UnitSettlementTenantShare).
 
     § 35a EStG (Migration 0012): tax_category kennzeichnet, ob die Position
     eine haushaltsnahe Dienstleistung oder Handwerkerleistung enthält.
@@ -120,11 +122,35 @@ class UnitSettlementTaxShare(Base):
     allocated_deductible_amount: Mapped[float] = mapped_column(Numeric(12, 2))
 
 
+class UnitSettlementTenantShare(Base):
+    """
+    Taggenaue Verteilung des Ist-Kosten-Anteils EINER umlagefähigen Position
+    (UnitSettlementShare) auf die im Zeitraum aktiven Mietverträge der
+    Einheit - siehe app/core/tenant_allocation.py. Wird nur für Positionen
+    mit is_apportionable=True befüllt; nicht umlagefähige Kosten (Verwalter-
+    gebühr, Instandhaltungsrücklage etc.) bekommen nie Mietvertrags-Anteile.
+    Leerstandstage bleiben unverteilt (implizit beim Eigentümer), daher kann
+    die Summe je Position kleiner als UnitSettlementShare.
+    allocated_actual_amount sein (Chat vom 24.09.2026).
+    """
+
+    __tablename__ = "unit_settlement_tenant_shares"
+    __table_args__ = (
+        CheckConstraint("allocated_amount >= 0"),
+        UniqueConstraint("position_id", "lease_id"),
+    )
+
+    share_id: Mapped[int] = mapped_column(primary_key=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("settlement_positions.position_id"))
+    lease_id: Mapped[int] = mapped_column(ForeignKey("leases.lease_id"))
+    allocated_amount: Mapped[float] = mapped_column(Numeric(12, 2))
+
+
 class UnitSettlementSummary(Base):
     """
     Ergebnis je Einheit: Ist-Kosten (Summe aller Positionen) vs. geleistete
-    Vorauszahlungen (aus Zahlungseingängen, Phase 5.2) im Zeitraum.
-    balance > 0 -> Erstattung, balance < 0 -> Nachzahlung/Abrechnungsspitze.
+    Vorauszahlungen (aus Zahlungseingängen) im Zeitraum. balance > 0 ->
+    Nachzahlung, balance < 0 -> Erstattung.
     """
 
     __tablename__ = "unit_settlement_summaries"
@@ -132,6 +158,28 @@ class UnitSettlementSummary(Base):
 
     summary_id: Mapped[int] = mapped_column(primary_key=True)
     settlement_id: Mapped[int] = mapped_column(ForeignKey("settlement_periods.settlement_id"))
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.unit_id"))
+    total_actual_costs: Mapped[float] = mapped_column(Numeric(12, 2))
+    total_prepayments: Mapped[float] = mapped_column(Numeric(12, 2))
+    balance: Mapped[float] = mapped_column(Numeric(12, 2))
+
+
+class LeaseSettlementSummary(Base):
+    """
+    Ergebnis je Mietvertrag: Ist-Kosten (Summe der umlagefähigen, taggenau
+    verteilten Positionen aus UnitSettlementTenantShare) vs. geleistete
+    Nebenkostenvorauszahlung (Zahlungseingänge auf Konto 1210, Chat vom
+    24.09.2026 "Trennung beim Zahlungseingang") im Zeitraum. balance > 0 ->
+    Nachzahlung, balance < 0 -> Erstattung (gleiche Vorzeichenkonvention wie
+    UnitSettlementSummary).
+    """
+
+    __tablename__ = "lease_settlement_summaries"
+    __table_args__ = (UniqueConstraint("settlement_id", "lease_id"),)
+
+    summary_id: Mapped[int] = mapped_column(primary_key=True)
+    settlement_id: Mapped[int] = mapped_column(ForeignKey("settlement_periods.settlement_id"))
+    lease_id: Mapped[int] = mapped_column(ForeignKey("leases.lease_id"))
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.unit_id"))
     total_actual_costs: Mapped[float] = mapped_column(Numeric(12, 2))
     total_prepayments: Mapped[float] = mapped_column(Numeric(12, 2))

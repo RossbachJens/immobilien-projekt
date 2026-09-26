@@ -8,15 +8,25 @@ import { accountLabel } from "../accounts/format";
 import { useAccounts } from "../accounts/useAccounts";
 import { ReserveFundPanel } from "../reserveFund/ReserveFundPanel";
 import { useResolutions } from "../resolutions/useResolutions";
+import type { Unit } from "../units/api";
 import { useUnits } from "../units/useUnits";
-import type { SettlementPeriodPayload, SettlementPositionPayload, SettlementStatus } from "./api";
+import type {
+  LeaseSettlementSummary,
+  SettlementPeriodPayload,
+  SettlementPositionPayload,
+  SettlementStatus,
+} from "./api";
 import { SettlementPeriodForm } from "./SettlementPeriodForm";
 import { SettlementPositionForm } from "./SettlementPositionForm";
 import {
   useCreateSettlementPeriod,
   useCreateSettlementPosition,
   useDeleteSettlementPosition,
+  useExportLeaseSettlement,
+  useExportSettlementBatch,
+  useExportSettlementTenantBatch,
   useExportUnitSettlement,
+  useLeaseSummaries,
   useRecalculateSettlement,
   useSettlementPeriods,
   useSettlementPositions,
@@ -221,6 +231,7 @@ export function SettlementPeriodsPage() {
                   propertyId={propertyId}
                   fiscalYear={period.fiscal_year}
                   periodStatus={period.status}
+                  units={units ?? []}
                   accountLabelFor={(id) => {
                     const a = accounts?.find((acc) => acc.account_id === id);
                     return a ? accountLabel(a) : `Konto #${id}`;
@@ -254,6 +265,7 @@ interface SettlementPeriodDetailsProps {
   propertyId: number;
   fiscalYear: number;
   periodStatus: SettlementStatus;
+  units: Unit[];
   accountLabelFor: (accountId: number) => string;
   unitLabelFor: (unitId: number) => string;
 }
@@ -263,23 +275,27 @@ function SettlementPeriodDetails({
   propertyId,
   fiscalYear,
   periodStatus,
+  units,
   accountLabelFor,
   unitLabelFor,
 }: SettlementPeriodDetailsProps) {
   const { data: positions, isLoading: positionsLoading } = useSettlementPositions(settlementId);
   const { data: summaries, isLoading: summariesLoading } = useUnitSummaries(settlementId);
+  const { data: leaseSummaries, isLoading: leaseSummariesLoading } = useLeaseSummaries(settlementId);
   const createPositionMutation = useCreateSettlementPosition(settlementId);
   const updatePositionMutation = useUpdateSettlementPosition(settlementId);
   const deletePositionMutation = useDeleteSettlementPosition(settlementId);
   const recalculateMutation = useRecalculateSettlement(settlementId);
   const exportMutation = useExportUnitSettlement();
+  const exportBatchMutation = useExportSettlementBatch();
+  const exportLeaseMutation = useExportLeaseSettlement();
+  const exportTenantBatchMutation = useExportSettlementTenantBatch();
 
   const isDraft = periodStatus === "Entwurf";
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const exportBatchMutation = useExportSettlementBatch();
 
   function handleCreate(payload: SettlementPositionPayload) {
     setFormError(null);
@@ -325,7 +341,38 @@ function SettlementPeriodDetails({
     });
   }
 
+  function handleLeaseExport(leaseId: number, unitNumber: string, tenantLastName: string) {
+    exportLeaseMutation.mutate({
+      settlementId,
+      leaseId,
+      filename: `Betriebskostenabrechnung_${fiscalYear}_${unitNumber}_${tenantLastName}.pdf`,
+    });
+  }
+
+  // Sprechende Bezeichnung für einen Mietvertrag - z.B. "Wohnung 3 – Schnurr
+  // (03.01.2024 – laufend)". lease_id kommt sowohl aus den Positions-Anteilen
+  // (tenant_shares) als auch aus den Ergebniszeilen (leaseSummaries); beide
+  // stammen aus derselben Berechnung, daher genügt ein einziger Lookup.
+  function leaseLabel(leaseId: number): string {
+    const entry = leaseSummaries?.find((s) => s.lease_id === leaseId);
+    if (!entry) return `Vertrag #${leaseId}`;
+    return `${unitLabelFor(entry.unit_id)} – ${entry.tenant_first_name} ${entry.tenant_last_name}`.trim();
+  }
+
+  function leasePeriodLabel(entry: LeaseSettlementSummary): string {
+    return `${entry.lease_start_date} – ${entry.lease_end_date ?? "laufend"}`;
+  }
+
   const totalActual = positions?.reduce((sum, p) => sum + p.actual_amount, 0) ?? 0;
+
+  // Einheiten ohne Ergebniszeile in leaseSummaries hatten im gesamten
+  // Zeitraum keinen aktiven Mietvertrag - das ist bei Eigennutzung durch den
+  // Eigentümer der Regelfall, kann aber auch schlicht Leerstand bedeuten.
+  // Nur informativ, kein Fehlerzustand (Chat vom 24.09.2026).
+  const unitsWithoutLease =
+    leaseSummaries !== undefined
+      ? units.filter((u) => !leaseSummaries.some((s) => s.unit_id === u.unit_id))
+      : [];
 
   return (
     <div className="settlement-period-details">
@@ -396,6 +443,32 @@ function SettlementPeriodDetails({
                 </table>
               </>
             )}
+            {position.is_apportionable && (
+              <>
+                <p className="settlement-period-details__account">
+                  Taggenauer Anteil je Mietvertrag
+                  {position.tenant_shares.length === 0 && " – keine Einheit dieser Position aktuell vermietet"}
+                </p>
+                {position.tenant_shares.length > 0 && (
+                  <table className="settlement-period-details__shares-table">
+                    <thead>
+                      <tr>
+                        <th>Mietvertrag</th>
+                        <th>Anteiliger Betrag</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {position.tenant_shares.map((share) => (
+                        <tr key={share.share_id}>
+                          <td>{leaseLabel(share.lease_id)}</td>
+                          <td>{share.allocated_amount.toFixed(2)} €</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            )}
             {isDraft && (
               <div className="settlement-period-details__position-actions">
                 <button type="button" onClick={() => startEditing(position.position_id)}>
@@ -447,18 +520,18 @@ function SettlementPeriodDetails({
         />
       )}
       <button
-  type="button"
-  onClick={() =>
-    exportBatchMutation.mutate({
-      settlementId,
-      filename: `Abrechnungen_${fiscalYear}_Sammelversand.pdf`,
-    })
-  }
-  disabled={exportBatchMutation.isPending}
->
-  {exportBatchMutation.isPending ? "Wird erstellt…" : "Alle als Sammel-PDF (Post)"}
-</button>
-      <h4 className="settlement-period-details__summaries-heading">Ergebnis je Einheit</h4>
+        type="button"
+        onClick={() =>
+          exportBatchMutation.mutate({
+            settlementId,
+            filename: `Abrechnungen_${fiscalYear}_Sammelversand.pdf`,
+          })
+        }
+        disabled={exportBatchMutation.isPending}
+      >
+        {exportBatchMutation.isPending ? "Wird erstellt…" : "Alle als Sammel-PDF (Post)"}
+      </button>
+      <h4 className="settlement-period-details__summaries-heading">Ergebnis je Einheit (Eigentümer)</h4>
       {summariesLoading && <p>Lädt…</p>}
       {!summariesLoading && summaries?.length === 0 && (
         <p>Noch keine Ergebnisse - Positionen anlegen, um zu verteilen.</p>
@@ -500,6 +573,85 @@ function SettlementPeriodDetails({
             ))}
           </tbody>
         </table>
+      )}
+
+      <h4 className="settlement-period-details__summaries-heading">Ergebnis je Mietvertrag</h4>
+      <p className="settlement-period-details__lease-hint">
+        Nur die umlagefähigen Kosten (mit demselben Verteilerschlüssel wie beim Eigentümer), taggenau auf die
+        im Zeitraum aktiven Mietverträge verteilt. Als Vorauszahlung zählt ausschließlich, was getrennt als
+        Nebenkostenvorauszahlung gebucht wurde (nicht die Kaltmiete).
+      </p>
+      {leaseSummariesLoading && <p>Lädt…</p>}
+      {!leaseSummariesLoading && leaseSummaries?.length === 0 && (
+        <p>Keine Einheit dieser Liegenschaft war im Abrechnungszeitraum vermietet.</p>
+      )}
+      {leaseSummaries && leaseSummaries.length > 0 && (
+        <table className="settlement-period-details__summary-table">
+          <thead>
+            <tr>
+              <th>Einheit</th>
+              <th>Mieter</th>
+              <th>Vertragszeitraum</th>
+              <th>Ist-Kosten</th>
+              <th>Vorauszahlung</th>
+              <th>Ergebnis</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {leaseSummaries.map((s) => (
+              <tr key={s.summary_id}>
+                <td>{unitLabelFor(s.unit_id)}</td>
+                <td>
+                  {s.tenant_first_name} {s.tenant_last_name}
+                </td>
+                <td>{leasePeriodLabel(s)}</td>
+                <td>{s.total_actual_costs.toFixed(2)} €</td>
+                <td>{s.total_prepayments.toFixed(2)} €</td>
+                <td
+                  className={
+                    s.balance > 0
+                      ? "settlement-period-details__balance--due"
+                      : "settlement-period-details__balance--refund"
+                  }
+                >
+                  {s.balance > 0
+                    ? `Nachzahlung: ${s.balance.toFixed(2)} €`
+                    : `Erstattung: ${Math.abs(s.balance).toFixed(2)} €`}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    onClick={() => handleLeaseExport(s.lease_id, unitLabelFor(s.unit_id), s.tenant_last_name)}
+                    disabled={exportLeaseMutation.isPending}
+                  >
+                    PDF
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {leaseSummaries && leaseSummaries.length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            exportTenantBatchMutation.mutate({
+              settlementId,
+              filename: `Betriebskostenabrechnungen_${fiscalYear}_Sammelversand.pdf`,
+            })
+          }
+          disabled={exportTenantBatchMutation.isPending}
+        >
+          {exportTenantBatchMutation.isPending ? "Wird erstellt…" : "Alle Mieter als Sammel-PDF (Post)"}
+        </button>
+      )}
+      {!leaseSummariesLoading && unitsWithoutLease.length > 0 && (
+        <p className="settlement-period-details__lease-hint">
+          Ohne Mietvertrag in diesem Zeitraum (Eigennutzung durch den Eigentümer oder Leerstand):{" "}
+          {unitsWithoutLease.map((u) => u.unit_number).join(", ")}.
+        </p>
       )}
 
       <ReserveFundPanel

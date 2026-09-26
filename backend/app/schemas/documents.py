@@ -17,6 +17,7 @@ class DocumentOut(BaseModel):
     unit_id: int | None
     owner_id: int | None
     tenant_id: int | None
+    lease_id: int | None
     settlement_id: int | None
     journal_entry_id: int | None
     meeting_id: int | None

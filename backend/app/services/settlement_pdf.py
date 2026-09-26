@@ -42,8 +42,17 @@ from app.core.postal import (
     PostalAddress,
     build_owner_postal_address,
 )
-from app.models.abrechnung import SettlementPeriod, SettlementPosition, UnitSettlementShare, UnitSettlementSummary
-from app.models.stammdaten import Owner, Property, Unit
+from app.models.abrechnung import (
+    LeaseSettlementSummary,
+    SettlementPeriod,
+    SettlementPosition,
+    UnitSettlementShare,
+    UnitSettlementSummary,
+    UnitSettlementTenantShare,
+)
+from app.models.stammdaten import Owner, Property, Tenant, Unit
+from app.models.zuordnungen import Lease
+from app.core.postal import build_tenant_postal_address
 from app.models.wirtschaftsplan import ResolutionCollection
 
 LEFT_MARGIN_MM = 20.0
@@ -679,3 +688,168 @@ def build_settlement_pdf_batch(
         raise ValueError("Keine Einheit mit zugeordnetem Eigentümer für den Sammelversand gefunden.")
 
     return _render_letters(f"Jahresabrechnungen {settlement.fiscal_year} - Sammelversand", entries, property_)
+
+# backend/app/services/settlement_pdf.py — am Dateiende anfügen
+@dataclass
+class TenantLetterInput:
+    """Eingabedaten für EINEN Brief im mieterseitigen Sammel-PDF - analog
+    UnitLetterInput, aber je Mietvertrag statt je Einheit/Eigentümer (Chat
+    vom 24.09.2026)."""
+
+    lease: Lease
+    tenant: Tenant
+    unit: Unit
+    positions: list[SettlementPosition]
+    tenant_shares_by_position: dict[int, UnitSettlementTenantShare]
+    summary: LeaseSettlementSummary | None
+
+
+def _tenant_letter_flowables(
+    *,
+    settlement: SettlementPeriod,
+    property_: Property,
+    unit: Unit,
+    positions: list[SettlementPosition],
+    tenant_shares_by_position: dict[int, UnitSettlementTenantShare],
+    summary: LeaseSettlementSummary | None,
+) -> list:
+    """Baut die Flowables EINES mieterseitigen Briefs. Enthält bewusst nur
+    umlagefähige Positionen (Materialisierung von 'Bei Mietern sind die
+    umlagefähigen Kosten mit dem gleichen Schlüssel wie beim Eigentümer
+    abzurechnen', Chat vom 24.09.2026) - kein §35a-Abschnitt (steuerlicher
+    Vorteil ausschließlich für Eigentümer) und keine Rücklagendarstellung
+    (Instandhaltungsrücklage betrifft nur das Eigentumsverhältnis). Anders
+    als beim Eigentümer-Brief fehlt der Hinweis auf die Fälligkeit "mit
+    Beschlussfassung über die Jahresabrechnung" - das ist WEG-Innenrecht
+    und für das Mietverhältnis (§ 556 BGB) ohne Bedeutung."""
+    story: list = []
+
+    story.append(
+        Paragraph(
+            f"Betriebskostenabrechnung für Ihre Mietwohnung vom "
+            f"{_german_date(settlement.period_start)} bis {_german_date(settlement.period_end)}",
+            _HEADING_STYLE,
+        )
+    )
+
+    story.append(_info_table(property_, unit))
+    story.append(Spacer(1, 6 * mm))
+
+    total_costs = float(summary.total_actual_costs) if summary else 0.0
+    total_prepayments = float(summary.total_prepayments) if summary else 0.0
+    balance = float(summary.balance) if summary else 0.0
+    balance_label = "Nachzahlung" if balance > 0 else "Erstattung"
+
+    summary_data = [
+        ["Umlagefähige Betriebskosten gem. Abrechnung", _eur(total_costs)],
+        ["Abzüglich geleistete Nebenkostenvorauszahlung", _eur(total_prepayments)],
+        [f"Abrechnungsergebnis ({balance_label})", _eur(abs(balance))],
+    ]
+    summary_table = Table(summary_data, colWidths=[110 * mm, 40 * mm])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
+                ("LINEABOVE", (0, 2), (-1, 2), 0.5, colors.black),
+                ("TOPPADDING", (0, 2), (-1, 2), 4),
+            ]
+        )
+    )
+    story.append(summary_table)
+    story.append(Spacer(1, 4 * mm))
+
+    story.append(
+        Paragraph(
+            "Die Fälligkeit richtet sich nach den Regelungen Ihres Mietvertrags.",
+            _SMALL_STYLE,
+        )
+    )
+    story.append(Spacer(1, 8 * mm))
+
+    story.append(Paragraph("Kostenaufstellung", _HEADING2_STYLE))
+
+    apportionable_positions = [p for p in positions if p.is_apportionable]
+    rows = [["Kostenart", "Verteilerschlüssel", "Gesamtbetrag", "Ihr Anteil"]]
+    for position in apportionable_positions:
+        share = tenant_shares_by_position.get(position.position_id)
+        allocated = float(share.allocated_amount) if share else 0.0
+        label = position.description or "Position"
+        rows.append([label, position.allocation_key_type, _eur(position.actual_amount), _eur(allocated)])
+    rows.append(["Summe", "", "", _eur(total_costs)])
+
+    position_table = Table(rows, colWidths=[65 * mm, 35 * mm, 30 * mm, 30 * mm])
+    position_table.setStyle(
+        TableStyle(
+            [
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.black),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.black),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    story.append(position_table)
+
+    return story
+
+
+def build_tenant_settlement_pdf(
+    *,
+    settlement: SettlementPeriod,
+    property_: Property,
+    unit: Unit,
+    tenant: Tenant,
+    positions: list[SettlementPosition],
+    tenant_shares_by_position: dict[int, UnitSettlementTenantShare],
+    summary: LeaseSettlementSummary | None,
+) -> bytes:
+    """Einzelexport für einen Mietvertrag - ein adressierter Brief."""
+    postal_address = build_tenant_postal_address(property_, tenant)
+    flowables = _tenant_letter_flowables(
+        settlement=settlement,
+        property_=property_,
+        unit=unit,
+        positions=positions,
+        tenant_shares_by_position=tenant_shares_by_position,
+        summary=summary,
+    )
+    return _render_letters(
+        f"Betriebskostenabrechnung {settlement.fiscal_year} - {unit.unit_number}",
+        [(postal_address, flowables)],
+        property_,
+    )
+
+
+def build_tenant_settlement_pdf_batch(
+    *,
+    settlement: SettlementPeriod,
+    property_: Property,
+    letters: list[TenantLetterInput],
+) -> bytes:
+    """Sammelexport - ein Brief je im Zeitraum aktivem Mietvertrag."""
+    entries = []
+    for item in letters:
+        postal_address = build_tenant_postal_address(property_, item.tenant)
+        flowables = _tenant_letter_flowables(
+            settlement=settlement,
+            property_=property_,
+            unit=item.unit,
+            positions=item.positions,
+            tenant_shares_by_position=item.tenant_shares_by_position,
+            summary=item.summary,
+        )
+        entries.append((postal_address, flowables))
+
+    if not entries:
+        raise ValueError("Keine Mietverträge für den Sammelversand gefunden.")
+
+    return _render_letters(
+        f"Betriebskostenabrechnungen {settlement.fiscal_year} - Sammelversand", entries, property_
+    )

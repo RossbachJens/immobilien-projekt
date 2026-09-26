@@ -6,6 +6,7 @@ import {
   createSettlementPosition,
   deleteSettlementPosition,
   exportUnitSettlementPdf,
+  listLeaseSummaries,
   listSettlementPeriods,
   listSettlementPositions,
   listUnitSummaries,
@@ -13,6 +14,8 @@ import {
   updateSettlementPeriod,
   updateSettlementPosition,
   exportSettlementBatchPdf,
+  exportLeaseSettlementPdf, 
+  exportSettlementTenantBatchPdf,
   type SettlementPeriodPayload,
   type SettlementPositionPayload,
   type SettlementPositionUpdatePayload,
@@ -22,6 +25,7 @@ import {
 const periodsKey = (propertyId?: number) => ["settlement-periods", propertyId ?? "all"];
 const positionsKey = (settlementId: number) => ["settlement-periods", settlementId, "positions"];
 const summariesKey = (settlementId: number) => ["settlement-periods", settlementId, "summaries"];
+const leaseSummariesKey = (settlementId: number) => ["settlement-periods", settlementId, "lease-summaries"];
 
 export function useSettlementPeriods(propertyId?: number) {
   return useQuery({
@@ -63,6 +67,7 @@ export function useCreateSettlementPosition(settlementId: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
       queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });
+      queryClient.invalidateQueries({ queryKey: leaseSummariesKey(settlementId) });
     },
   });
 }
@@ -75,6 +80,7 @@ export function useUpdateSettlementPosition(settlementId: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
       queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });
+      queryClient.invalidateQueries({ queryKey: leaseSummariesKey(settlementId) });
     },
   });
 }
@@ -86,6 +92,7 @@ export function useDeleteSettlementPosition(settlementId: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
       queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });
+      queryClient.invalidateQueries({ queryKey: leaseSummariesKey(settlementId) });
     },
   });
 }
@@ -97,6 +104,7 @@ export function useRecalculateSettlement(settlementId: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: positionsKey(settlementId) });
       queryClient.invalidateQueries({ queryKey: summariesKey(settlementId) });
+      queryClient.invalidateQueries({ queryKey: leaseSummariesKey(settlementId) });
     },
   });
 }
@@ -105,6 +113,14 @@ export function useUnitSummaries(settlementId: number | undefined) {
   return useQuery({
     queryKey: summariesKey(settlementId ?? -1),
     queryFn: () => listUnitSummaries(settlementId as number),
+    enabled: settlementId !== undefined,
+  });
+}
+
+export function useLeaseSummaries(settlementId: number | undefined) {
+  return useQuery({
+    queryKey: leaseSummariesKey(settlementId ?? -1),
+    queryFn: () => listLeaseSummaries(settlementId as number),
     enabled: settlementId !== undefined,
   });
 }
@@ -131,12 +147,47 @@ export function useExportUnitSettlement() {
   });
 }
 
-// frontend/src/features/settlementPeriods/useSettlementPeriods.ts — Import von
-// "exportSettlementBatchPdf" ergänzen und diesen Hook hinzufügen
 export function useExportSettlementBatch() {
   return useMutation({
     mutationFn: async ({ settlementId, filename }: { settlementId: number; filename: string }) => {
       const blob = await exportSettlementBatchPdf(settlementId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+}
+
+// frontend/src/features/settlementPeriods/useSettlementPeriods.ts — ergänzen
+export function useExportLeaseSettlement() {
+  return useMutation({
+    mutationFn: async ({
+      settlementId,
+      leaseId,
+      filename,
+    }: {
+      settlementId: number;
+      leaseId: number;
+      filename: string;
+    }) => {
+      const blob = await exportLeaseSettlementPdf(settlementId, leaseId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+}
+
+export function useExportSettlementTenantBatch() {
+  return useMutation({
+    mutationFn: async ({ settlementId, filename }: { settlementId: number; filename: string }) => {
+      const blob = await exportSettlementTenantBatchPdf(settlementId);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

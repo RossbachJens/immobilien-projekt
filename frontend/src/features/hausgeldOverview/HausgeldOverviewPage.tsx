@@ -45,6 +45,9 @@ export function HausgeldOverviewPage() {
   const totalTarget = overview?.reduce((sum, u) => sum + u.target_amount, 0) ?? 0;
   const totalPaid = overview?.reduce((sum, u) => sum + u.paid_amount, 0) ?? 0;
   const totalBalance = overview?.reduce((sum, u) => sum + u.balance, 0) ?? 0;
+  const totalReserveTarget = overview?.reduce((sum, u) => sum + u.target_reserve_amount, 0) ?? 0;
+  const totalReservePaid = overview?.reduce((sum, u) => sum + u.paid_reserve_amount, 0) ?? 0;
+  const totalReserveBalance = overview?.reduce((sum, u) => sum + u.balance_reserve, 0) ?? 0;
 
   if (propertiesLoading) {
     return (
@@ -73,7 +76,8 @@ export function HausgeldOverviewPage() {
         <h1>Hausgeldübersicht – {property?.name}</h1>
         <p className="hausgeld-overview-page__hint">
           Soll (aus dem beschlossenen Wirtschaftsplan) vs. Ist (Zahlungseingänge) je Einheit, kumuliert bis
-          zum laufenden Monat des gewählten Jahres.
+          zum laufenden Monat des gewählten Jahres. Die Instandhaltungsrücklage ist zusätzlich separat
+          ausgewiesen.
         </p>
         <div className="hausgeld-overview-page__filters">
           <label>
@@ -116,6 +120,9 @@ export function HausgeldOverviewPage() {
                   <th>Soll (bis heute)</th>
                   <th>Ist</th>
                   <th>Saldo</th>
+                  <th>Rücklage Soll (bis heute)</th>
+                  <th>Rücklage Ist</th>
+                  <th>Rücklage Saldo</th>
                   <th />
                 </tr>
               </thead>
@@ -143,6 +150,23 @@ export function HausgeldOverviewPage() {
                             ? `${Math.abs(u.balance).toFixed(2)} € Guthaben`
                             : "0,00 €"}
                       </td>
+                      <td>{u.target_reserve_amount.toFixed(2)} €</td>
+                      <td>{u.paid_reserve_amount.toFixed(2)} €</td>
+                      <td
+                        className={
+                          u.balance_reserve > 0
+                            ? "hausgeld-overview-page__balance--due"
+                            : u.balance_reserve < 0
+                              ? "hausgeld-overview-page__balance--credit"
+                              : undefined
+                        }
+                      >
+                        {u.balance_reserve > 0
+                          ? `${u.balance_reserve.toFixed(2)} € Rückstand`
+                          : u.balance_reserve < 0
+                            ? `${Math.abs(u.balance_reserve).toFixed(2)} € Guthaben`
+                            : "0,00 €"}
+                      </td>
                       <td>
                         <button
                           type="button"
@@ -154,7 +178,7 @@ export function HausgeldOverviewPage() {
                     </tr>
                     {expandedUnitId === u.unit_id && (
                       <tr>
-                        <td colSpan={7}>
+                        <td colSpan={10}>
                           <UnitPaymentsList
                             propertyId={propertyId}
                             unitId={u.unit_id}
@@ -172,6 +196,9 @@ export function HausgeldOverviewPage() {
                   <td>{totalTarget.toFixed(2)} €</td>
                   <td>{totalPaid.toFixed(2)} €</td>
                   <td>{totalBalance.toFixed(2)} €</td>
+                  <td>{totalReserveTarget.toFixed(2)} €</td>
+                  <td>{totalReservePaid.toFixed(2)} €</td>
+                  <td>{totalReserveBalance.toFixed(2)} €</td>
                   <td />
                 </tr>
               </tfoot>
@@ -200,14 +227,16 @@ function UnitPaymentsList({ propertyId, unitId, fiscalYear }: UnitPaymentsListPr
       <thead>
         <tr>
           <th>Datum</th>
+          <th>Verwendungszweck</th>
           <th>Betrag</th>
           <th>Beleg-Nr.</th>
         </tr>
       </thead>
       <tbody>
         {payments.map((p) => (
-          <tr key={p.entry_id}>
+          <tr key={`${p.entry_id}-${p.purpose}`}>
             <td>{p.entry_date}</td>
+            <td>{p.purpose === "Instandhaltungsruecklage" ? "Instandhaltungsrücklage" : "Bewirtschaftung"}</td>
             <td>{p.amount.toFixed(2)} €</td>
             <td>{p.document_reference ?? "–"}</td>
           </tr>

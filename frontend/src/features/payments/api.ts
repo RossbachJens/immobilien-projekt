@@ -7,13 +7,17 @@ export interface PaymentPayload {
   unit_id: number;
   payment_type: PaymentType;
   lease_id?: number | null;
-  amount: number;
   payment_date: string;
   document_reference?: string | null;
+  // Miete: gebucht auf 1200/1210.
+  cold_rent_amount?: number;
+  additional_costs_amount?: number;
+  // Hausgeld: gebucht auf 1220/1225.
+  operating_amount?: number;
+  reserve_amount?: number;
+  bank_account_id?: number | null;
 }
 
-// Rückgabe ist ein vollständiger Buchungsbeleg (siehe JournalEntryOut) -
-// hier reicht die entry_id für die Erfolgsmeldung.
 export interface PaymentResult {
   entry_id: number;
 }

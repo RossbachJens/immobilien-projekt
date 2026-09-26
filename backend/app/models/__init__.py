@@ -22,18 +22,19 @@ from app.models.zuordnungen import (  # noqa: F401
     UserProperty,
 )
 from app.models.abrechnung import (  # noqa: F401
+    LeaseSettlementSummary,
     SettlementPeriod,
     SettlementPosition,
     SettlementPositionAccount,
     UnitSettlementShare,
     UnitSettlementSummary,
     UnitSettlementTaxShare,
+    UnitSettlementTenantShare,
 )
 from app.models.bank_accounts import BankAccountPurpose, PropertyBankAccount  # noqa: F401
 
 from app.models.meetings import MeetingAgendaItem, OwnerMeeting  # noqa: F401
 
-# backend/app/models/__init__.py — ergänzen
 from app.models.reserve_fund import (  # noqa: F401
     ReserveFundPosition,
     ReserveFundPositionAccount,

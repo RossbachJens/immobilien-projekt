@@ -19,7 +19,7 @@ class Document(Base):
     __table_args__ = (
         CheckConstraint(
             "category IN ('Kontoauszug', 'Rechnung', 'Angebot', 'Versicherung', 'Vertrag', "
-            "'Protokoll', 'Sonstiges')"
+            "'Protokoll', 'Sonstiges', 'Einladung', 'Niederschrift', 'Abrechnung')"
         ),
         CheckConstraint("visibility IN ('intern', 'eigentuemer', 'alle')"),
         CheckConstraint("file_size_bytes > 0"),
@@ -32,6 +32,11 @@ class Document(Base):
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.unit_id"))
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.owner_id"))
     tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.tenant_id"))
+    # Zusätzlich zu tenant_id: unterscheidet die mieterseitige Betriebskosten-
+    # abrechnung bei einem unterjährigen Mieterwechsel innerhalb derselben
+    # Einheit eindeutig - tenant_id allein würde bei zwei verschiedenen
+    # Verträgen desselben Zeitraums nicht reichen (Chat vom 24.09.2026).
+    lease_id: Mapped[int | None] = mapped_column(ForeignKey("leases.lease_id"))
     settlement_id: Mapped[int | None] = mapped_column(ForeignKey("settlement_periods.settlement_id"))
     journal_entry_id: Mapped[int | None] = mapped_column(ForeignKey("journal_entries.entry_id"))
     meeting_id: Mapped[int | None] = mapped_column(ForeignKey("owner_meetings.meeting_id"))
@@ -40,16 +45,9 @@ class Document(Base):
     original_filename: Mapped[str] = mapped_column(String(255))
     mime_type: Mapped[str] = mapped_column(String(100))
     file_size_bytes: Mapped[int]
-    # Wird bewusst NICHT in der Listen-Antwort mitgeladen (siehe Router,
-    # nächster Schritt) - dort werden gezielt nur die Metadaten-Spalten
-    # abgefragt, damit eine Dokumentenliste nicht bei jedem Aufruf alle
-    # Dateiinhalte durch die DB-Verbindung schaufelt. Nur der Download-
-    # Endpoint lädt content.
     content: Mapped[bytes] = mapped_column(LargeBinary)
 
     visibility: Mapped[str] = mapped_column(String(20), default="intern")
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.user_id"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deleted_at: Mapped[datetime | None]
-    
-    

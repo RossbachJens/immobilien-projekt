@@ -11,19 +11,21 @@ from io import BytesIO
 from app.core.access import accessible_property_ids
 from app.core.allocation import compute_unit_fractions, distribute_amount
 from app.core.deps import get_current_user
-# Import ergänzen (oben bei den übrigen app.core-Imports)
 from app.core.document_archive import archive_generated_pdf
+from app.core.tenant_allocation import compute_lease_day_fractions, distribute_amount_by_lease
 
 from app.core.reserve_accounts import cumulative_balance, reserve_account_ids
 from app.core.roles import resolve_role
 from app.db.session import get_db
 from app.models.abrechnung import (
+    LeaseSettlementSummary,
     SettlementPeriod,
     SettlementPosition,
     SettlementPositionAccount,
     UnitSettlementShare,
     UnitSettlementSummary,
     UnitSettlementTaxShare,
+    UnitSettlementTenantShare,
 )
 from app.models.buchhaltung import Account, AccountType, EntryDirection, EntryLine, JournalEntry
 from app.models.reserve_fund import (
@@ -33,9 +35,10 @@ from app.models.reserve_fund import (
     ReserveFundStatementOperatingAccount,
     ReserveFundUnitShare,
 )
-from app.models.stammdaten import Property, Unit, User
+from app.models.stammdaten import Owner, Property, Tenant, Unit, User
 from app.models.wirtschaftsplan import ResolutionCollection
 from app.schemas.settlement import (
+    LeaseSettlementSummaryOut,
     SettlementPeriodCreate,
     SettlementPeriodOut,
     SettlementPeriodStatusUpdate,
@@ -45,16 +48,19 @@ from app.schemas.settlement import (
     UnitSettlementShareOut,
     UnitSettlementSummaryOut,
     UnitSettlementTaxShareOut,
+    UnitSettlementTenantShareOut,
 )
-from app.models.stammdaten import Owner
-from app.models.zuordnungen import UnitOwnerHistory
+from app.models.zuordnungen import Lease, UnitOwnerHistory
 from app.services.settlement_pdf import (
     ReserveFundPdfData,
     ReserveFundPdfPosition,
     TaxCertificatePdfPosition,
+    TenantLetterInput,
     UnitLetterInput,
     build_settlement_pdf,
     build_settlement_pdf_batch,
+    build_tenant_settlement_pdf,
+    build_tenant_settlement_pdf_batch,
 )
 
 router = APIRouter(prefix="/settlement-periods", tags=["settlement-periods"])
@@ -65,7 +71,8 @@ ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "Inaktiv": set(),
 }
 
-HAUSGELD_FORDERUNG_NUMBER = "1220"
+HAUSGELD_FORDERUNG_NUMBERS = ("1220", "1225")
+ADDITIONAL_COSTS_ACCOUNT_NUMBER = "1210"
 
 
 def _require_write_role(current_user: User) -> None:
@@ -73,6 +80,21 @@ def _require_write_role(current_user: User) -> None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "Nur Administratoren oder zugeordnete Verwalter dürfen Abrechnungen pflegen.",
+        )
+
+
+def _require_read_access(current_user: User) -> None:
+    """Nebenkostenabrechnung ist - wie die Beschluss-Sammlung und die
+    Bankkonten - Eigentümern/Verwaltern/Admins vorbehalten. Mieter haben
+    noch kein eigenes Portal (siehe PROJECTPLAN.md, 'bewusst zurück-
+    gestellt') und dürfen daher nicht über die bestehenden Endpunkte auf die
+    Kostenaufstellung des gesamten Gebäudes zugreifen - vor dieser Prüfung
+    war das möglich (Sicherheitslücke, Chat vom 24.09.2026): ein Mieter
+    konnte Ist-Kosten und Ergebnisse ALLER Einheiten/Eigentümer der eigenen
+    Liegenschaft einsehen, nicht nur die eigene."""
+    if resolve_role(current_user) == "mieter":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Mieter haben keinen Zugriff auf die Nebenkostenabrechnung."
         )
 
 
@@ -98,6 +120,16 @@ def _get_readable_period(db: Session, settlement_id: int, current_user: User) ->
     return settlement
 
 
+def _get_lease_for_settlement(db: Session, settlement: SettlementPeriod, lease_id: int) -> Lease:
+    lease = db.get(Lease, lease_id)
+    if lease is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mietvertrag nicht gefunden")
+    unit = db.get(Unit, lease.unit_id)
+    if unit is None or unit.property_id != settlement.property_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mietvertrag gehört nicht zu dieser Abrechnung")
+    return lease
+
+
 def _validate_resolution(db: Session, resolution_id: int, property_id: int) -> None:
     resolution = db.get(ResolutionCollection, resolution_id)
     if resolution is None or resolution.deleted_at is not None or resolution.property_id != property_id:
@@ -107,10 +139,6 @@ def _validate_resolution(db: Session, resolution_id: int, property_id: int) -> N
 def _compute_actual_amount(
     db: Session, property_id: int, account_ids: list[int], period_start, period_end
 ) -> float:
-    """Ist-Kosten je Position = Soll-Summe minus Haben-Summe im Zeitraum,
-    über ALLE gepoolten Konten dieser Position hinweg summiert - nettet
-    Stornos automatisch heraus (siehe
-    app/routers/journal_entries.py::storno_journal_entry)."""
     debit_sum, credit_sum = db.execute(
         select(
             func.coalesce(func.sum(case((EntryLine.direction == EntryDirection.debit, EntryLine.amount), else_=0)), 0),
@@ -155,6 +183,41 @@ def _load_position_tax_shares(db: Session, position_ids: list[int]) -> dict[int,
     return result
 
 
+def _load_position_tenant_shares(
+    db: Session, position_ids: list[int]
+) -> dict[int, list[UnitSettlementTenantShare]]:
+    if not position_ids:
+        return {}
+    rows = list(
+        db.scalars(
+            select(UnitSettlementTenantShare).where(UnitSettlementTenantShare.position_id.in_(position_ids))
+        )
+    )
+    result: dict[int, list[UnitSettlementTenantShare]] = {}
+    for row in rows:
+        result.setdefault(row.position_id, []).append(row)
+    return result
+
+
+def _load_tenant_shares_for_lease(
+    db: Session, position_ids: list[int], lease_id: int
+) -> dict[int, UnitSettlementTenantShare]:
+    """Wie _load_position_tenant_shares, aber gefiltert auf einen einzelnen
+    Mietvertrag und als position_id -> Share statt position_id -> Liste -
+    genau das, was der PDF-Export je Position/Mietvertrag braucht."""
+    if not position_ids:
+        return {}
+    rows = list(
+        db.scalars(
+            select(UnitSettlementTenantShare).where(
+                UnitSettlementTenantShare.position_id.in_(position_ids),
+                UnitSettlementTenantShare.lease_id == lease_id,
+            )
+        )
+    )
+    return {row.position_id: row for row in rows}
+
+
 def _validate_tax_category(tax_category: str, deductible_amount: float | None, actual_amount: float) -> None:
     if tax_category == "keine":
         return
@@ -175,10 +238,6 @@ def _validate_tax_category(tax_category: str, deductible_amount: float | None, a
 def _replace_tax_shares(
     db: Session, property_: Property, settlement: SettlementPeriod, position: SettlementPosition
 ) -> list[UnitSettlementTaxShare]:
-    """Löscht bestehende §35a-Anteile der Position und legt sie bei
-    tax_category != 'keine' neu an - gleiche Verteilungslogik wie bei den
-    Ist-Kosten-Anteilen (unit_settlement_shares), nur mit deductible_amount
-    statt actual_amount als zu verteilendem Gesamtbetrag."""
     db.query(UnitSettlementTaxShare).filter(UnitSettlementTaxShare.position_id == position.position_id).delete()
 
     if position.tax_category == "keine" or not position.deductible_amount:
@@ -198,6 +257,42 @@ def _replace_tax_shares(
     for s in tax_shares:
         db.refresh(s)
     return tax_shares
+
+
+def _replace_tenant_shares(
+    db: Session, settlement: SettlementPeriod, position: SettlementPosition
+) -> list[UnitSettlementTenantShare]:
+    db.query(UnitSettlementTenantShare).filter(
+        UnitSettlementTenantShare.position_id == position.position_id
+    ).delete()
+
+    if not position.is_apportionable:
+        return []
+
+    unit_shares = list(
+        db.scalars(select(UnitSettlementShare).where(UnitSettlementShare.position_id == position.position_id))
+    )
+
+    tenant_shares: list[UnitSettlementTenantShare] = []
+    for unit_share in unit_shares:
+        fractions = compute_lease_day_fractions(
+            db, unit_share.unit_id, settlement.period_start, settlement.period_end
+        )
+        for lease_id, amount in distribute_amount_by_lease(
+            float(unit_share.allocated_actual_amount), fractions
+        ):
+            if amount <= 0:
+                continue
+            tenant_shares.append(
+                UnitSettlementTenantShare(
+                    position_id=position.position_id, lease_id=lease_id, allocated_amount=amount
+                )
+            )
+    db.add_all(tenant_shares)
+    db.flush()
+    for s in tenant_shares:
+        db.refresh(s)
+    return tenant_shares
 
 
 def _validate_settlement_accounts(db: Session, account_ids: list[int], property_id: int) -> None:
@@ -225,7 +320,18 @@ def _hausgeld_forderung_account_ids(db: Session, property_id: int) -> list[int]:
     return list(
         db.scalars(
             select(Account.account_id).where(
-                Account.account_number == HAUSGELD_FORDERUNG_NUMBER,
+                Account.account_number.in_(HAUSGELD_FORDERUNG_NUMBERS),
+                or_(Account.property_id.is_(None), Account.property_id == property_id),
+            )
+        )
+    )
+
+
+def _additional_costs_account_ids(db: Session, property_id: int) -> list[int]:
+    return list(
+        db.scalars(
+            select(Account.account_id).where(
+                Account.account_number == ADDITIONAL_COSTS_ACCOUNT_NUMBER,
                 or_(Account.property_id.is_(None), Account.property_id == property_id),
             )
         )
@@ -241,6 +347,24 @@ def _sum_unit_prepayments(db: Session, unit_id: int, account_ids: list[int], per
         .join(JournalEntry, JournalEntry.entry_id == EntryLine.entry_id)
         .where(
             EntryLine.unit_id == unit_id,
+            EntryLine.account_id.in_(account_ids),
+            EntryLine.direction == EntryDirection.credit,
+            JournalEntry.entry_date >= period_start,
+            JournalEntry.entry_date <= period_end,
+        )
+    )
+    return float(result or 0)
+
+
+def _sum_lease_prepayments(db: Session, lease_id: int, account_ids: list[int], period_start, period_end) -> float:
+    if not account_ids:
+        return 0.0
+    result = db.scalar(
+        select(func.coalesce(func.sum(EntryLine.amount), 0))
+        .select_from(EntryLine)
+        .join(JournalEntry, JournalEntry.entry_id == EntryLine.entry_id)
+        .where(
+            EntryLine.lease_id == lease_id,
             EntryLine.account_id.in_(account_ids),
             EntryLine.direction == EntryDirection.credit,
             JournalEntry.entry_date >= period_start,
@@ -300,11 +424,89 @@ def _recompute_summaries(db: Session, settlement: SettlementPeriod) -> None:
     db.commit()
 
 
+def _recompute_lease_summaries(db: Session, settlement: SettlementPeriod) -> None:
+    positions = list(
+        db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
+    )
+    position_ids = [p.position_id for p in positions]
+    tenant_shares = (
+        list(
+            db.scalars(
+                select(UnitSettlementTenantShare).where(UnitSettlementTenantShare.position_id.in_(position_ids))
+            )
+        )
+        if position_ids
+        else []
+    )
+    costs_by_lease: dict[int, float] = {}
+    for s in tenant_shares:
+        costs_by_lease[s.lease_id] = costs_by_lease.get(s.lease_id, 0.0) + float(s.allocated_amount)
+
+    leases = list(
+        db.scalars(
+            select(Lease)
+            .join(Unit, Unit.unit_id == Lease.unit_id)
+            .where(
+                Unit.property_id == settlement.property_id,
+                Lease.deleted_at.is_(None),
+                Lease.start_date <= settlement.period_end,
+                (Lease.end_date.is_(None)) | (Lease.end_date >= settlement.period_start),
+            )
+        )
+    )
+
+    additional_costs_ids = _additional_costs_account_ids(db, settlement.property_id)
+
+    active_lease_ids = {lease.lease_id for lease in leases}
+    # Entfernt Ergebniszeilen für Verträge, die inzwischen nicht mehr im
+    # Zeitraum aktiv sind (z.B. nachträglich als Fehlerfassung soft-gelöscht) -
+    # ohne dieses Aufräumen blieben stale Zeilen stehen, da diese Funktion
+    # sonst nur upserted, nie löscht (Chat vom 24.09.2026).
+    db.query(LeaseSettlementSummary).filter(
+        LeaseSettlementSummary.settlement_id == settlement.settlement_id,
+        LeaseSettlementSummary.lease_id.notin_(active_lease_ids),
+    ).delete(synchronize_session=False)
+
+    for lease in leases:
+        total_costs = round(costs_by_lease.get(lease.lease_id, 0.0), 2)
+        total_prepayments = round(
+            _sum_lease_prepayments(
+                db, lease.lease_id, additional_costs_ids, settlement.period_start, settlement.period_end
+            ),
+            2,
+        )
+        balance = round(total_costs - total_prepayments, 2)
+
+        existing = db.scalar(
+            select(LeaseSettlementSummary).where(
+                LeaseSettlementSummary.settlement_id == settlement.settlement_id,
+                LeaseSettlementSummary.lease_id == lease.lease_id,
+            )
+        )
+        if existing is not None:
+            existing.total_actual_costs = total_costs
+            existing.total_prepayments = total_prepayments
+            existing.balance = balance
+        else:
+            db.add(
+                LeaseSettlementSummary(
+                    settlement_id=settlement.settlement_id,
+                    lease_id=lease.lease_id,
+                    unit_id=lease.unit_id,
+                    total_actual_costs=total_costs,
+                    total_prepayments=total_prepayments,
+                    balance=balance,
+                )
+            )
+    db.commit()
+
+
 def _position_to_out(
     position: SettlementPosition,
     account_ids: list[int],
     shares: list[UnitSettlementShare],
     tax_shares: list[UnitSettlementTaxShare] | None = None,
+    tenant_shares: list[UnitSettlementTenantShare] | None = None,
 ) -> SettlementPositionOut:
     return SettlementPositionOut(
         position_id=position.position_id,
@@ -318,7 +520,26 @@ def _position_to_out(
         deductible_amount=position.deductible_amount,
         unit_shares=[UnitSettlementShareOut.model_validate(s) for s in shares],
         tax_shares=[UnitSettlementTaxShareOut.model_validate(s) for s in (tax_shares or [])],
+        tenant_shares=[UnitSettlementTenantShareOut.model_validate(s) for s in (tenant_shares or [])],
     )
+
+def _lease_summary_to_out(
+    summary: LeaseSettlementSummary, lease: Lease, tenant: Tenant | None
+) -> LeaseSettlementSummaryOut:
+    return LeaseSettlementSummaryOut(
+        summary_id=summary.summary_id,
+        settlement_id=summary.settlement_id,
+        lease_id=summary.lease_id,
+        unit_id=summary.unit_id,
+        total_actual_costs=summary.total_actual_costs,
+        total_prepayments=summary.total_prepayments,
+        balance=summary.balance,
+        tenant_first_name=tenant.first_name if tenant else "",
+        tenant_last_name=tenant.last_name if tenant else "Unbekannt",
+        lease_start_date=lease.start_date,
+        lease_end_date=lease.end_date,
+    )
+
 
 def _get_current_owner(db: Session, unit_id: int) -> Owner | None:
     return db.scalar(
@@ -332,9 +553,6 @@ def _get_current_owner(db: Session, unit_id: int) -> Owner | None:
 def _build_reserve_fund_pdf_data(
     db: Session, settlement: SettlementPeriod, property_: Property, unit_id: int
 ) -> ReserveFundPdfData | None:
-    """Bündelt alle für den PDF-Export einer Einheit nötigen Rücklagen-/
-    Vermögensdaten - liefert None, wenn für diese Abrechnung (noch) keine
-    Rücklagendarstellung angelegt wurde (siehe app/routers/reserve_fund.py)."""
     statement = db.scalar(
         select(ReserveFundStatement).where(ReserveFundStatement.settlement_id == settlement.settlement_id)
     )
@@ -347,9 +565,6 @@ def _build_reserve_fund_pdf_data(
     reserve_balance_start = cumulative_balance(db, settlement.property_id, reserve_ids, day_before_start)
     reserve_balance_end = cumulative_balance(db, settlement.property_id, reserve_ids, settlement.period_end)
 
-    # Der Rücklagenbestand selbst folgt gesetzlich immer den Miteigentums-
-    # anteilen (§ 16 WEG), unabhängig vom Verteilerschlüssel einzelner
-    # Positionen - daher hier fest "MEA".
     mea_fractions = compute_unit_fractions(db, property_, "MEA", settlement.fiscal_year)
     unit_fraction = mea_fractions.get(unit_id, 0.0)
 
@@ -412,10 +627,6 @@ def _build_reserve_fund_pdf_data(
 def _build_tax_certificate_pdf_data(
     db: Session, unit_id: int, positions: list[SettlementPosition]
 ) -> list[TaxCertificatePdfPosition]:
-    """§35a-relevante Positionen dieser Abrechnung, für eine Einheit
-    aufbereitet - reine Projektion der bereits beim Anlegen/Aktualisieren
-    berechneten unit_settlement_tax_shares (siehe _replace_tax_shares), kein
-    erneutes distribute_amount hier."""
     relevant = [p for p in positions if p.tax_category != "keine" and p.deductible_amount]
     if not relevant:
         return []
@@ -452,6 +663,7 @@ def list_settlement_periods(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[SettlementPeriod]:
+    _require_read_access(current_user)
     query = select(SettlementPeriod).where(SettlementPeriod.deleted_at.is_(None))
 
     property_ids = accessible_property_ids(db, current_user)
@@ -532,6 +744,7 @@ def list_settlement_positions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[SettlementPositionOut]:
+    _require_read_access(current_user)
     settlement = _get_readable_period(db, settlement_id, current_user)
     positions = list(
         db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
@@ -547,6 +760,7 @@ def list_settlement_positions(
 
     accounts_by_position = _load_position_account_ids(db, position_ids)
     tax_shares_by_position = _load_position_tax_shares(db, position_ids)
+    tenant_shares_by_position = _load_position_tenant_shares(db, position_ids)
 
     return [
         _position_to_out(
@@ -554,6 +768,7 @@ def list_settlement_positions(
             accounts_by_position.get(p.position_id, []),
             shares_by_position.get(p.position_id, []),
             tax_shares_by_position.get(p.position_id, []),
+            tenant_shares_by_position.get(p.position_id, []),
         )
         for p in positions
     ]
@@ -599,7 +814,7 @@ def create_settlement_position(
         deductible_amount=payload.deductible_amount if payload.tax_category != "keine" else None,
     )
     db.add(position)
-    db.flush()  # vergibt position.position_id, wird für Konten-Zuordnung und Shares gebraucht
+    db.flush()
 
     db.add_all(
         SettlementPositionAccount(position_id=position.position_id, account_id=account_id)
@@ -616,6 +831,7 @@ def create_settlement_position(
         db.refresh(s)
 
     tax_shares = _replace_tax_shares(db, property_, settlement, position)
+    tenant_shares = _replace_tenant_shares(db, settlement, position)
 
     db.commit()
     db.refresh(position)
@@ -623,10 +839,15 @@ def create_settlement_position(
         db.refresh(s)
     for s in tax_shares:
         db.refresh(s)
+    for s in tenant_shares:
+        db.refresh(s)
 
     _recompute_summaries(db, settlement)
+    _recompute_lease_summaries(db, settlement)
 
-    return _position_to_out(position, payload.account_ids, shares, tax_shares)
+    return _position_to_out(position, payload.account_ids, shares, tax_shares, tenant_shares)
+
+
 @router.patch("/{settlement_id}/positions/{position_id}", response_model=SettlementPositionOut)
 def update_settlement_position(
     settlement_id: int,
@@ -670,16 +891,10 @@ def update_settlement_position(
             position.position_id, []
         )
 
-    # Konten und/oder Verteilerschlüssel können sich geändert haben - Ist-Betrag
-    # und Verteilung auf Einheiten daher komplett neu ermitteln (analog
-    # recalculate_settlement, nur für eine einzelne Position).
     position.actual_amount = _compute_actual_amount(
         db, settlement.property_id, effective_account_ids, settlement.period_start, settlement.period_end
     )
 
-    # tax_category ohne (neue) Angabe von deductible_amount würde sonst den
-    # alten Wert stehen lassen, auch wenn die Kategorie inzwischen auf
-    # 'keine' zurückgesetzt wurde - deshalb bei 'keine' immer explizit löschen.
     if position.tax_category == "keine":
         position.deductible_amount = None
     _validate_tax_category(position.tax_category, position.deductible_amount, position.actual_amount)
@@ -699,6 +914,7 @@ def update_settlement_position(
         db.refresh(s)
 
     tax_shares = _replace_tax_shares(db, property_, settlement, position)
+    tenant_shares = _replace_tenant_shares(db, settlement, position)
 
     db.commit()
     db.refresh(position)
@@ -706,10 +922,13 @@ def update_settlement_position(
         db.refresh(s)
     for s in tax_shares:
         db.refresh(s)
+    for s in tenant_shares:
+        db.refresh(s)
 
     _recompute_summaries(db, settlement)
+    _recompute_lease_summaries(db, settlement)
 
-    return _position_to_out(position, effective_account_ids, shares, tax_shares)
+    return _position_to_out(position, effective_account_ids, shares, tax_shares, tenant_shares)
 
 
 @router.delete("/{settlement_id}/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -719,9 +938,6 @@ def delete_settlement_position(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Hartes Löschen - Positionen sind reine Planungsartefakte ohne
-    Bindungswirkung, solange die Abrechnung im Entwurf ist (analog
-    Budget-Positionen). Nach Beschluss nicht mehr möglich."""
     _require_write_role(current_user)
     settlement = _get_readable_period(db, settlement_id, current_user)
 
@@ -737,6 +953,9 @@ def delete_settlement_position(
 
     db.query(UnitSettlementShare).filter(UnitSettlementShare.position_id == position.position_id).delete()
     db.query(UnitSettlementTaxShare).filter(UnitSettlementTaxShare.position_id == position.position_id).delete()
+    db.query(UnitSettlementTenantShare).filter(
+        UnitSettlementTenantShare.position_id == position.position_id
+    ).delete()
     db.query(SettlementPositionAccount).filter(
         SettlementPositionAccount.position_id == position.position_id
     ).delete()
@@ -744,6 +963,7 @@ def delete_settlement_position(
     db.commit()
 
     _recompute_summaries(db, settlement)
+    _recompute_lease_summaries(db, settlement)
 
 @router.post("/{settlement_id}/recalculate", response_model=list[SettlementPositionOut])
 def recalculate_settlement(
@@ -770,9 +990,6 @@ def recalculate_settlement(
             db, settlement.property_id, account_ids, settlement.period_start, settlement.period_end
         )
 
-        # Automatische Neuberechnung darf nicht an einem inzwischen zu hohen,
-        # manuell erfassten Lohnanteil scheitern - defensives Kappen statt
-        # Fehler, da recalculate mehrere Positionen in einem Rutsch verarbeitet.
         if position.deductible_amount is not None and position.deductible_amount > position.actual_amount:
             position.deductible_amount = position.actual_amount
 
@@ -791,10 +1008,12 @@ def recalculate_settlement(
             db.refresh(s)
 
         tax_shares = _replace_tax_shares(db, property_, settlement, position)
-        result.append(_position_to_out(position, account_ids, shares, tax_shares))
+        tenant_shares = _replace_tenant_shares(db, settlement, position)
+        result.append(_position_to_out(position, account_ids, shares, tax_shares, tenant_shares))
 
     db.commit()
     _recompute_summaries(db, settlement)
+    _recompute_lease_summaries(db, settlement)
     return result
 
 
@@ -804,14 +1023,49 @@ def list_unit_summaries(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[UnitSettlementSummary]:
+    _require_read_access(current_user)
     settlement = _get_readable_period(db, settlement_id, current_user)
     return list(
         db.scalars(
             select(UnitSettlementSummary).where(UnitSettlementSummary.settlement_id == settlement.settlement_id)
         )
     )
-    
-    
+
+
+@router.get("/{settlement_id}/lease-summaries", response_model=list[LeaseSettlementSummaryOut])
+def list_lease_summaries(
+    settlement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[LeaseSettlementSummaryOut]:
+    _require_read_access(current_user)
+    settlement = _get_readable_period(db, settlement_id, current_user)
+    summaries = list(
+        db.scalars(
+            select(LeaseSettlementSummary).where(LeaseSettlementSummary.settlement_id == settlement.settlement_id)
+        )
+    )
+    if not summaries:
+        return []
+
+    lease_ids = [s.lease_id for s in summaries]
+    leases_by_id = {l.lease_id: l for l in db.scalars(select(Lease).where(Lease.lease_id.in_(lease_ids)))}
+
+    tenant_ids = {l.tenant_id for l in leases_by_id.values()}
+    tenants_by_id = (
+        {t.tenant_id: t for t in db.scalars(select(Tenant).where(Tenant.tenant_id.in_(tenant_ids)))}
+        if tenant_ids
+        else {}
+    )
+
+    result: list[LeaseSettlementSummaryOut] = []
+    for s in summaries:
+        lease = leases_by_id.get(s.lease_id)
+        if lease is None:
+            continue
+        result.append(_lease_summary_to_out(s, lease, tenants_by_id.get(lease.tenant_id)))
+    return result
+
 
 @router.get("/{settlement_id}/units/{unit_id}/export")
 def export_unit_settlement_pdf(
@@ -820,6 +1074,7 @@ def export_unit_settlement_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
+    _require_read_access(current_user)
     settlement = _get_readable_period(db, settlement_id, current_user)
 
     unit = db.get(Unit, unit_id)
@@ -901,12 +1156,7 @@ def export_settlement_batch_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Sammel-PDF für den Postversand: ein adressierter Brief je Einheit mit
-    aktuell zugeordnetem Eigentümer (DIN-5008-Anschriftfeld), alle in einem
-    Dokument - für den Druck-/Kuvertierlauf. Für das DMS wird zusätzlich je
-    Einheit ein individuelles PDF gerendert und archiviert (Grundsatz-
-    entscheidung: Archivierung je Einheit, nicht je Sammelversand). Einheiten
-    ohne Eigentümer werden weiterhin stillschweigend übersprungen."""
+    _require_read_access(current_user)
     settlement = _get_readable_period(db, settlement_id, current_user)
     property_ = db.get(Property, settlement.property_id)
 
@@ -1001,6 +1251,207 @@ def export_settlement_batch_pdf(
     db.commit()
 
     filename = f"Abrechnungen_{settlement.fiscal_year}_Sammelversand.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{settlement_id}/leases/{lease_id}/export")
+def export_lease_settlement_pdf(
+    settlement_id: int,
+    lease_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Mieterseitiger PDF-Export - Betriebskostenabrechnung für einen
+    einzelnen Mietvertrag (Chat vom 24.09.2026). Nur Admin/Verwalter, kein
+    zusätzlicher _require_read_access nötig, da _require_write_role Mieter
+    ohnehin ausschließt - der Brief wird postalisch verschickt/archiviert,
+    nicht online abgerufen (kein Mieterportal)."""
+    _require_write_role(current_user)
+    settlement = _get_readable_period(db, settlement_id, current_user)
+    lease = _get_lease_for_settlement(db, settlement, lease_id)
+    unit = db.get(Unit, lease.unit_id)
+    tenant = db.get(Tenant, lease.tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mieter für diesen Vertrag nicht gefunden")
+
+    property_ = db.get(Property, settlement.property_id)
+
+    positions = list(
+        db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
+    )
+    position_ids = [p.position_id for p in positions]
+    tenant_shares_by_position = _load_tenant_shares_for_lease(db, position_ids, lease_id)
+
+    summary = db.scalar(
+        select(LeaseSettlementSummary).where(
+            LeaseSettlementSummary.settlement_id == settlement.settlement_id,
+            LeaseSettlementSummary.lease_id == lease_id,
+        )
+    )
+
+    pdf_bytes = build_tenant_settlement_pdf(
+        settlement=settlement,
+        property_=property_,
+        unit=unit,
+        tenant=tenant,
+        positions=positions,
+        tenant_shares_by_position=tenant_shares_by_position,
+        summary=summary,
+    )
+
+    filename = (
+        f"Betriebskostenabrechnung_{settlement.fiscal_year}_{unit.unit_number.replace(' ', '_')}_"
+        f"{tenant.last_name}.pdf"
+    )
+
+    archive_generated_pdf(
+        db,
+        property_id=property_.property_id,
+        category="Abrechnung",
+        title=f"Betriebskostenabrechnung {settlement.fiscal_year} – {unit.unit_number} ({tenant.last_name})",
+        filename=filename,
+        content=pdf_bytes,
+        visibility="alle",
+        settlement_id=settlement.settlement_id,
+        unit_id=unit.unit_id,
+        lease_id=lease.lease_id,
+        tenant_id=tenant.tenant_id,
+        uploaded_by=current_user.user_id,
+    )
+    db.commit()
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{settlement_id}/export-tenant-batch")
+def export_settlement_tenant_batch_pdf(
+    settlement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Sammel-PDF für den Postversand an Mieter: ein adressierter Brief je
+    im Zeitraum aktivem Mietvertrag. Einheiten ohne Mietvertrag (Eigen-
+    nutzung oder Leerstand) werden übersprungen - wie beim Eigentümer-
+    Sammelversand wird zusätzlich je Mietvertrag ein individuelles PDF
+    archiviert."""
+    _require_write_role(current_user)
+    settlement = _get_readable_period(db, settlement_id, current_user)
+    property_ = db.get(Property, settlement.property_id)
+
+    positions = list(
+        db.scalars(select(SettlementPosition).where(SettlementPosition.settlement_id == settlement.settlement_id))
+    )
+    position_ids = [p.position_id for p in positions]
+
+    all_tenant_shares = (
+        list(
+            db.scalars(
+                select(UnitSettlementTenantShare).where(UnitSettlementTenantShare.position_id.in_(position_ids))
+            )
+        )
+        if position_ids
+        else []
+    )
+    shares_by_lease: dict[int, dict[int, UnitSettlementTenantShare]] = {}
+    for s in all_tenant_shares:
+        shares_by_lease.setdefault(s.lease_id, {})[s.position_id] = s
+
+    summaries = list(
+        db.scalars(
+            select(LeaseSettlementSummary).where(LeaseSettlementSummary.settlement_id == settlement.settlement_id)
+        )
+    )
+    summary_by_lease = {s.lease_id: s for s in summaries}
+
+    # Vereinigung statt nur shares_by_lease.keys(): ein Mietvertrag mit
+    # ausschließlich nicht umlagefähigen Positionen hat 0,00 € Ist-Kosten und
+    # damit keine tenant_shares-Zeile, taucht aber trotzdem in summaries auf
+    # und soll seinen (dann leeren) Brief bekommen.
+    lease_ids = {s.lease_id for s in summaries} | set(shares_by_lease.keys())
+    if not lease_ids:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Keine Mietverträge im Abrechnungszeitraum gefunden - Sammelversand nicht möglich.",
+        )
+
+    leases = list(db.scalars(select(Lease).where(Lease.lease_id.in_(lease_ids))))
+    unit_ids = {l.unit_id for l in leases}
+    units_by_id = {u.unit_id: u for u in db.scalars(select(Unit).where(Unit.unit_id.in_(unit_ids)))}
+    tenant_ids = {l.tenant_id for l in leases}
+    tenants_by_id = (
+        {
+            t.tenant_id: t
+            for t in db.scalars(
+                select(Tenant).where(Tenant.tenant_id.in_(tenant_ids), Tenant.deleted_at.is_(None))
+            )
+        }
+        if tenant_ids
+        else {}
+    )
+
+    letters: list[TenantLetterInput] = []
+    for lease in leases:
+        tenant = tenants_by_id.get(lease.tenant_id)
+        unit = units_by_id.get(lease.unit_id)
+        if tenant is None or unit is None:
+            continue
+        letters.append(
+            TenantLetterInput(
+                lease=lease,
+                tenant=tenant,
+                unit=unit,
+                positions=positions,
+                tenant_shares_by_position=shares_by_lease.get(lease.lease_id, {}),
+                summary=summary_by_lease.get(lease.lease_id),
+            )
+        )
+
+    if not letters:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Kein Mieter mit vollständigen Stammdaten gefunden - Sammelversand nicht möglich.",
+        )
+
+    pdf_bytes = build_tenant_settlement_pdf_batch(settlement=settlement, property_=property_, letters=letters)
+
+    for item in letters:
+        individual_pdf = build_tenant_settlement_pdf(
+            settlement=settlement,
+            property_=property_,
+            unit=item.unit,
+            tenant=item.tenant,
+            positions=item.positions,
+            tenant_shares_by_position=item.tenant_shares_by_position,
+            summary=item.summary,
+        )
+        archive_generated_pdf(
+            db,
+            property_id=property_.property_id,
+            category="Abrechnung",
+            title=f"Betriebskostenabrechnung {settlement.fiscal_year} – {item.unit.unit_number} ({item.tenant.last_name})",
+            filename=(
+                f"Betriebskostenabrechnung_{settlement.fiscal_year}_"
+                f"{item.unit.unit_number.replace(' ', '_')}_{item.tenant.last_name}.pdf"
+            ),
+            content=individual_pdf,
+            visibility="alle",
+            settlement_id=settlement.settlement_id,
+            unit_id=item.unit.unit_id,
+            lease_id=item.lease.lease_id,
+            tenant_id=item.tenant.tenant_id,
+            uploaded_by=current_user.user_id,
+        )
+    db.commit()
+
+    filename = f"Betriebskostenabrechnungen_{settlement.fiscal_year}_Sammelversand.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",

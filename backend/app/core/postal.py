@@ -1,28 +1,15 @@
 # backend/app/core/postal.py
 """
 Gemeinsame Hilfsfunktionen für den Postversand (DIN 5008 Anschriftfeld) und
-das Verwalter-Logo im Seitenkopf - genutzt sowohl vom ReportLab-basierten
-Abrechnungs-PDF (app/services/settlement_pdf.py) als auch vom
-WeasyPrint-basierten Einladungs-/Niederschrift-PDF (app/routers/meetings.py).
-
-DIN 5008 Anschriftfeld (Fensterbriefumschlag DIN lang/C6-5), Form A:
-  - linker Rand:  20 mm vom Blattrand
-  - oberer Rand:  45 mm vom Blattrand
-  - Breite:       85 mm
-  - Höhe:         45 mm (Zusatz-/Vermerkzone + Anschriftzone)
-Die erste Zeile im Feld (Zusatz-/Vermerkzone) trägt hier die
-Rücksendeangabe (Absenderzeile) - Standard bei Fensterkuverts, damit ein
-unzustellbarer Brief ohne separaten Absenderaufdruck zurückgeschickt werden
-kann.
-
-Logo-Kopfzone: 0-45 mm vom oberen Blattrand, also oberhalb des
-Anschriftfelds - kollidiert unabhängig von der gewählten Position (hier:
-oben rechts) nicht mit dem Fensterausschnitt.
+das Verwalter-Logo im Seitenkopf - genutzt vom ReportLab-basierten
+Abrechnungs-PDF (app/services/settlement_pdf.py, Eigentümer UND seit
+24.09.2026 auch Mieter) sowie vom WeasyPrint-basierten
+Einladungs-/Niederschrift-PDF (app/routers/meetings.py).
 """
 import base64
 from dataclasses import dataclass
 
-from app.models.stammdaten import Owner, Property
+from app.models.stammdaten import Owner, Property, Tenant
 
 DIN5008_LEFT_MM = 20.0
 DIN5008_TOP_MM = 45.0
@@ -35,17 +22,10 @@ DIN5008_LINE_HEIGHT_MM = 5.0
 
 DIN5008_CONTENT_TOP_MM = DIN5008_TOP_MM + DIN5008_HEIGHT_MM + 5.0
 
-# Logo oben rechts, oberhalb des Anschriftfelds - dieselben Werte werden
-# sowohl vom ReportLab-Zeichner (settlement_pdf.py) als auch per CSS
-# (meetings.py) verwendet, damit das Logo auf allen PDF-Typen optisch
-# gleich sitzt.
 LOGO_TOP_MM = 10.0
 LOGO_RIGHT_MM = 20.0
 LOGO_MAX_WIDTH_MM = 40.0
 LOGO_MAX_HEIGHT_MM = 25.0
-# Reine CSS-Deklarationen ohne geschweifte Klammern - lässt sich daher
-# gefahrlos in Templates einsetzen, die selbst schon str.format()/f-strings
-# mit CSS-Regeln (geschweifte Klammern!) verwenden.
 LOGO_CSS_BOX = (
     f"top: {LOGO_TOP_MM}mm; right: {LOGO_RIGHT_MM}mm; "
     f"max-width: {LOGO_MAX_WIDTH_MM}mm; max-height: {LOGO_MAX_HEIGHT_MM}mm;"
@@ -54,13 +34,14 @@ LOGO_CSS_BOX = (
 
 @dataclass
 class PostalAddress:
-    """Fertig aufbereitete Anschrift für den Postversand. 'owner' wird
-    mitgeführt, damit Aufrufer (z.B. für den Dateinamen) ohne erneute
-    Abfrage darauf zugreifen können."""
+    """Fertig aufbereitete Anschrift für den Postversand. 'owner'/'tenant'
+    werden mitgeführt, damit Aufrufer ohne erneute Abfrage darauf zugreifen
+    können - je nach Empfängertyp ist nur eines der beiden gesetzt."""
 
     sender_line: str
     recipient_lines: list[str]
-    owner: Owner
+    owner: Owner | None = None
+    tenant: Tenant | None = None
 
 
 def build_owner_postal_address(property_: Property, owner: Owner) -> PostalAddress:
@@ -92,6 +73,19 @@ def build_owner_postal_address(property_: Property, owner: Owner) -> PostalAddre
     return PostalAddress(sender_line=sender_line, recipient_lines=lines, owner=owner)
 
 
+def build_tenant_postal_address(property_: Property, tenant: Tenant) -> PostalAddress:
+    """Wie build_owner_postal_address, für Mieter (Chat vom 24.09.2026,
+    mieterseitige Betriebskostenabrechnung). Tenant hat weder salutation
+    noch company_name - der Empfängerblock ist entsprechend einfacher."""
+    sender_line = f"{property_.name} · {property_.address}"
+
+    lines: list[str] = [f"{tenant.first_name} {tenant.last_name}".strip()]
+    lines.append(tenant.street_and_number)
+    lines.append(f"{tenant.postal_code or ''} {tenant.city or ''}".strip())
+
+    return PostalAddress(sender_line=sender_line, recipient_lines=lines, tenant=tenant)
+
+
 def greeting_for_owner(owner: Owner) -> str:
     """Anredezeile im Brieftext (nicht im Adressfeld)."""
     if owner.company_name and not (owner.first_name or owner.last_name):
@@ -101,6 +95,12 @@ def greeting_for_owner(owner: Owner) -> str:
     if owner.salutation == "Frau":
         return f"Sehr geehrte Frau {owner.last_name},"
     name = f"{owner.first_name or ''} {owner.last_name}".strip()
+    return f"Sehr geehrte/r {name}," if name else "Sehr geehrte Damen und Herren,"
+
+
+def greeting_for_tenant(tenant: Tenant) -> str:
+    """Wie greeting_for_owner, für Mieter - ohne Anrede-/Firmenfeld."""
+    name = f"{tenant.first_name} {tenant.last_name}".strip()
     return f"Sehr geehrte/r {name}," if name else "Sehr geehrte Damen und Herren,"
 
 

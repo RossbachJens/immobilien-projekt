@@ -89,3 +89,10 @@
   display: flex;
   padding: 0.15rem 0;
 }
+/* frontend/src/features/settlementPeriods/SettlementPeriodsPage.css — ergänzen */
+.settlement-period-details__lease-hint {
+  color: #666;
+  font-size: 0.85rem;
+  font-style: italic;
+  margin: 0.2rem 0 0.6rem;
+}
